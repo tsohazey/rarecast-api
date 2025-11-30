@@ -13,14 +13,18 @@ def home():
 @app.route("/test")
 def test():
     if not WEBHOOK:
-        return "<h2>Missing webhook — go add DISCORD_WEBHOOK in Render</h2>"
+        return "<h2 style='color:red'>Missing webhook — add DISCORD_WEBHOOK in Render</h2>"
     
-    embed = DiscordEmbed(title="TEST SUCCESS", description="If you see this in Discord, we are 100% live", color="00ff00")
     try:
-        DiscordWebhook(url=WEBHOOK).add_embed(embed).execute()
-        return "<h1 style='color:green; text-align:center'>TEST MESSAGE SENT — CHECK DISCORD</h1>"
-    except:
-        return "<h1 style='color:red'>Webhook failed — recreate it in Discord</h1>"
+        embed = DiscordEmbed(title="TEST SUCCESS", description="RareCast is live!", color="00ff00")
+        response = DiscordWebhook(url=WEBHOOK).add_embed(embed).execute()
+        if response.status_code == 204:
+            return "<h1 style='color:green; text-align:center'>TEST SENT — CHECK DISCORD!</h1>"
+        else:
+            return f"<h1 style='color:red'>Bad response: {response.status_code}</h1>"
+    except Exception as e:
+        return f"<h1 style='color:red'>Error: {str(e)}</h1>"
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+    port = int(os.environ.get("PORT", 8000))
+    app.run(host="0.0.0.0", port=port)
