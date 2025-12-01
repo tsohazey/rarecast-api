@@ -1,14 +1,62 @@
-from flask import Flask, request
+from flask import Flask, request, jsonify
 import os
 import requests
+from bs4 import BeautifulSoup
 import threading
 import time
 
 app = Flask(__name__)
 SLACK = os.getenv("SLACK_WEBHOOK")
 
-last_run = "Never"
-hits_today = 0
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+}
+
+# FULL 34 UNICORN COLORS + JAPANESE
+UNICORNS = [
+    "HT Ito Tennessee Shad","HT 伊藤テネシーシャッド","HTテネシー",
+    "GP Gerbera","GP ガーベラ","ガーベラ",
+    "FA Ghost Kawamutsu","FA ゴーストカワムツ","ゴーストカワムツ",
+    "GLX Rainbow","GLX レインボー","GLXレインボー",
+    "Ito Tennessee (SP-C)","伊藤テネシー SP-C","ITO Tennessee SP-C",
+    "GP Pro Blue II","GP プロブルーⅡ","プロブルー2",
+    "Secret V-Ore","シークレット Vオレ","V-オレ",
+    "GP Crack Spawn","GP クラックスポーン","クラックスポーン",
+    "GG Biwahigai","GG ビワヒガイ","ビワヒガイ",
+    "FA Baby Raigyo","FA ベビーライギョ","ベビーライギョ",
+    "GLXS Spawn Cherry","GLXS スポーンチェリー","スポーンチェリー",
+    "SK (Sexy Killer)","SK セクシーキラー","セクシーキラー",
+    "GP Kikyou","GP キキョウ","キキョウ",
+    "Small Mouth Bass","スモールマウスバス",
+    "Macha Head","マチャヘッド",
+    "Golden Brownie","ゴールデンブラウニー",
+    "Ito Illusion","伊藤イリュージョン","ITO Illusion",
+    "Rising Sun","ライジングサン",
+    "M Endmax","M エンドマックス","エンドマックス",
+    "Northern Secret","ノーザンシークレット",
+    "Crack Sand","クラックサンド",
+    "Hiuo","ヒウオ",
+    "IL Mirage","IL ミラージュ","ミラージュ",
+    "Blue Back Chart Candy","ブルーバックチャートキャンディ",
+    "IL Red Head","IL レッドヘッド","レッドヘッド",
+    "Morning Dawn","モーニングドーン",
+    "GP Phantom (SP-C)","GP ファントム SP-C","GP Phantom",
+    "GG Hasu Red Eye (SP-C)","GG ハスレッドアイ SP-C","ハスレッドアイ",
+    "Kameyama Ghost Pearl","亀山ゴーストパール","カメヤマゴースト",
+    "M Hot Shad","M ホットシャッド",
+    "Nanko Reaction","ナンコウリアクション",
+    "SB PB Stain Reaction","SB PB ステインリアクション",
+    "Frozen Tequila","フローズンテキーラ",
+    "Sakura Viper","サクラヴァイパー","桜ヴァイパー"
+]
+
+SERIES = ["vision 110","110 jr","110 +1","i-switch","popmax","popx","pop max","pop x"]
+
+def matches(text):
+    t = text.lower()
+    if not any(s in t for s in SERIES):
+        return False
+    return any(u.lower() in t for u in UNICORNS)
 
 def send(message):
     if SLACK:
@@ -17,57 +65,90 @@ def send(message):
         except:
             pass
 
-def run_hunt(silent=False):
-    global last_run, hits_today
-    last_run = time.strftime("%Y-%m-%d %H:%M:%S")
-
-    # ←←← PASTE YOUR FULL REAL SCRUBBING CODE HERE (eBay/Buyee/Mercari) ←←←
-    # For now using the simple version so it works instantly
+def run_hunt(triggered_by_user=False):
     found = False
-    if "ghost kawamutsu" in requests.get("https://www.ebay.com", timeout=10).text.lower():
-        found = True
+    alerts = []
+
+    # eBay
+    try:
+        r = requests.get("https://www.ebay.com/sch/i.html?_nkw=megabass+(vision+110+OR+popmax+OR+popx+OR+i-switch)&LH_ItemCondition=1000&_sop=10", headers=HEADERS, timeout=15)
+        soup = BeautifulSoup(r.text, 'html.parser')
+        for item in soup.find_all("li", class_="s-item")[:8]:
+            title_tag = item.find("div", class_="s-item__title")
+            link_tag = item.find("a", class_="s-item__link")
+            price_tag = item.find("span", class_="s-item__price")
+            if title_tag and link_tag and matches(title_tag.get_text()):
+                title = title_tag.get_text(strip=True)
+                link = link_tag['href'].split("?")[0]
+                price = price_tag.get_text(strip=True) if price_tag else "???"
+                alert = f"*EBAY UNICORN*\n{title}\n{price}\n{link}"
+                alerts.append(alert)
+                found = True
+    except:
+        pass
+
+    # Buyee
+    try:
+        r = requests.get("https://buyee.jp/item/search/query/メガバス%20(ビジョン110%20OR%20ポップマックス%20OR%20ポップX)", headers=HEADERS, timeout=15)
+        if matches(r.text):
+            alerts.append("*BUYEE HIT*\nCheck: https://buyee.jp/item/search/query/メガバス%20(ビジョン110%20OR%20ポップマックス%20OR%20ポップX)")
+            found = True
+    except:
+        pass
+
+    # Mercari
+    try:
+        r = requests.get("https://jp.mercari.com/search?keyword=メガバス%20ビジョン110%20OR%20ポップマックス%20OR%20ポップX&status=on_sale", headers=HEADERS, timeout=15)
+        if matches(r.text):
+            alerts.append("*MERCARI HIT*\nCheck: https://jp.mercari.com/search?keyword=メガバス%20ビジョン110%20OR%20ポップマックス%20OR%20%20ポップX&status=on_sale")
+            found = True
+    except:
+        pass
 
     if found:
-        send(f"*UNICORN FOUND*\nFA Ghost Kawamutsu live right now!\nhttps://ebay.com/fake-link")
-        hits_today += 1
-        if silent:
-            return "found"
+        send("\n\n".join(alerts))
+        if triggered_by_user:
+            send("Manual hunt complete — unicorn(s) found")
     else:
-        if not silent:  # ←←← THIS IS THE KEY LINE
-            send("No unicorns right now — hunter is running")
-        return "nothing"
+        if triggered_by_user:
+            send("No unicorns right now")
 
 @app.route("/")
 def home():
     return '''
-    <h1 style="text-align:center; margin-top:100px; font-size:60px;">RARECAST HUNTER</h1>
-    <h2 style="text-align:center; margin:40px;">
-      <a href="/hunt" style="background:#e01e5a; color:white; padding:20px 60px; font-size:45px; border-radius:20px;">RUN HUNT NOW</a>
+    <h1 style="text-align:center;margin-top:100px;font-size:70px;color:#ff0044">RARECAST HUNTER</h1>
+    <h2 style="text-align:center;margin:40px;">
+      <a href="/hunt" style="background:#e01e5a;color:white;padding:20px 60px;font-size:50px;border-radius:20px;">RUN HUNT NOW</a>
+      <a href="/demo" style="background:#00aa00;color:white;padding:20px 60px;font-size:50px;border-radius:20px;margin-left:20px;">DEMO</a>
     </h2>
-    <p style="text-align:center; color:#666;">(Auto-run every 5 min is silent — only alerts on hits)</p>
+    <p style="text-align:center;color:#666;">Auto-run is 100% silent — only pings on hits</p>
     '''
 
 @app.route("/hunt")
 def manual_hunt():
-    threading.Thread(target=run_hunt, args=(False,)).start()  # NOT silent → sends "no results"
+    threading.Thread(target=run_hunt, args=(True,)).start()
     return "<h1>Hunt started — check Slack</h1>"
 
-# This is the one UptimeRobot hits every 5 minutes
 @app.route("/auto")
 def auto_hunt():
-    threading.Thread(target=run_hunt, args=(True,)).start()   # SILENT → no message if nothing found
+    threading.Thread(target=run_hunt, args=(False,)).start()
     return "ok", 200
+
+@app.route("/demo")
+def demo():
+    send("*DEMO MODE*\nFA Ghost Kawamutsu just dropped!\nhttps://ebay.com/itm/12345")
+    return "<h1>Demo sent</h1>"
 
 @app.route("/slack/events", methods=["POST"])
 def slack_events():
     data = request.json
-    if "challenge" in data:
+    if data.get("challenge"):
         return jsonify({"challenge": data["challenge"]})
-    if data.get("event", {}).get("type") == "message" and not data["event"].get("bot_id"):
-        text = data["event"].get("text","").strip().lower()
-        if text == "/hunt":
-            threading.Thread(target=run_hunt, args=(False,)).start()
-            send("Manual hunt triggered by command")
+    event = data.get("event", {})
+    if event.get("type") == "message" and not event.get("bot_id"):
+        if event.get("text", "").strip().lower() == "/hunt":
+            threading.Thread(target=run_hunt, args=(True,)).start()
+            send("Hunt command received — scanning now")
     return "", 200
 
 if __name__ == "__main__":
