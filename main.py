@@ -1,8 +1,4 @@
-# main.py → FINAL ZERO-SPAM VERSION — Dec 1, 2025
-# UptimeRobot = completely silent unless unicorn found
-# Web button + Slack = full messages (start + complete)
-# Demo still works perfectly
-
+# main.py → FINAL 100% WORKING VERSION (Render + Gunicorn compatible)
 from flask import Flask, request
 import os
 import requests
@@ -20,14 +16,12 @@ COOLDOWN_MINUTES = 7
 seen_links = set()
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/131.0 Safari/537.36",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36",
     "Accept-Language": "en-US,en;q=0.9,ja;q=0.8",
 }
 
-# FULL RARITY DATABASE — 180+ colors
+# FULL RARITY DATABASE (180+ colors)
 UNICORN_DB = {
-    # ULTRA RARE ★★★★★+
     "northern secret": "ULTRA RARE ★★★★★+", "ノーザンシークレット": "ULTRA RARE ★★★★★+",
     "ito illusion": "ULTRA RARE ★★★★★+", "伊藤イリュージョン": "ULTRA RARE ★★★★★+",
     "ito tennessee (sp-c)": "ULTRA RARE ★★★★★+", "伊藤テネシー (sp-c)": "ULTRA RARE ★★★★★+",
@@ -35,8 +29,6 @@ UNICORN_DB = {
     "m hot shad": "ULTRA RARE ★★★★★+", "mホットシャッド": "ULTRA RARE ★★★★★+",
     "morning dawn": "ULTRA RARE ★★★★★+", "モーニングドーン": "ULTRA RARE ★★★★★+",
     "frozen bloody hasu": "ULTRA RARE ★★★★★+", "フローズンブラッディハス": "ULTRA RARE ★★★★★+",
-
-    # EXTREMELY RARE ★★★★★
     "gp gerbera": "EXTREMELY RARE ★★★★★", "gpガーベラ": "EXTREMELY RARE ★★★★★",
     "secret v-ore": "EXTREMELY RARE ★★★★★", "シークレットvオーレ": "EXTREMELY RARE ★★★★★",
     "glxs spawn cherry": "EXTREMELY RARE ★★★★★", "glxsスポーンチェリー": "EXTREMELY RARE ★★★★★",
@@ -47,8 +39,6 @@ UNICORN_DB = {
     "nanko reaction": "EXTREMELY RARE ★★★★★", "南湖リアクション": "EXTREMELY RARE ★★★★★",
     "full mekki": "EXTREMELY RARE ★★★★★", "フルメッキ": "EXTREMELY RARE ★★★★★",
     "full blue": "EXTREMELY RARE ★★★★★", "フルブルー": "EXTREMELY RARE ★★★★★",
-
-    # VERY RARE ★★★★★
     "ht ito tennessee shad": "VERY RARE ★★★★★", "ht伊藤テネシーシャッド": "VERY RARE ★★★★★",
     "glx rainbow": "VERY RARE ★★★★★", "glxレインボー": "VERY RARE ★★★★★",
     "gp crack spawn": "VERY RARE ★★★★★", "gpクラックスポーン": "VERY RARE ★★★★★",
@@ -58,8 +48,6 @@ UNICORN_DB = {
     "m endmax": "VERY RARE ★★★★★", "mエンドマックス": "VERY RARE ★★★★★",
     "hiuo": "VERY RARE ★★★★★", "ヒウオ": "VERY RARE ★★★★★",
     "elegy bone": "VERY RARE ★★★★★", "エレジーボーン": "VERY RARE ★★★★★",
-
-    # RARE ★★★★
     "fa ghost kawamutsu": "RARE ★★★★", "faゴーストカワムツ": "RARE ★★★★",
     "gg hasu red eye (sp-c)": "RARE ★★★★", "ggハスレッドアイ (sp-c)": "RARE ★★★★",
     "sk (sexy killer)": "RARE ★★★★", "skセクシーキラー": "RARE ★★★★",
@@ -68,28 +56,25 @@ UNICORN_DB = {
     "il red head": "RARE ★★★★", "ilレッドヘッド": "RARE ★★★★",
     "gg biwahigai": "RARE ★★★★", "ggビワハヤ": "RARE ★★★★",
     "kameyama ghost pearl": "RARE ★★★★", "亀山ゴーストパール": "RARE ★★★★",
-
-    # LIMITED
     "gp pro blue ii": "LIMITED ★★★", "gpプロブルーii": "LIMITED ★★★",
     "small mouth bass": "LIMITED ★★★", "スモールマウスバス": "LIMITED ★★★",
     "blue back chart candy": "LIMITED ★★★", "ブルーバックチャートキャンディ": "LIMITED ★★★",
 }
 
-MODELS = {"vision 110","110 jr","110 +1","110+1","i-switch","popmax","popx","pop max","pop x"}
+MODELS = {"vision 110", "110 jr", "110 +1", "110+1", "i-switch", "popmax", "popx", "pop max", "pop x"}
 
-def is_unicorn(text: str) -> bool:
-    :
+def is_unicorn(text):
     t = text.lower()
     return any(m in t for m in MODELS) and any(u in t for u in UNICORN_DB)
 
-def get_rarity(text: str) -> str:
+def get_rarity(text):
     t = text.lower()
     for key, rating in UNICORN_DB.items():
         if key in t:
             return rating
     return "LIMITED"
 
-def send(msg: str):
+def send(msg):
     if not SLACK:
         return
     try:
@@ -141,10 +126,10 @@ def find_unicorns():
 
     return found
 
-def run_hunt(mode: str = "silent", user_id: str = ""):
+def run_hunt(mode="silent", user_id=""):
     global last_alert_time, seen_links
 
-    # Start message only for manual hunts
+    # Start message only for manual triggers
     if mode == "web":
         send("Hunt started from web button — scanning eBay & Buyee…")
     elif mode == "slack":
@@ -158,35 +143,32 @@ def run_hunt(mode: str = "silent", user_id: str = ""):
             seen_links.add(link)
             time.sleep(0.7)
         last_alert_time = datetime.now()
-
-        # Only manual triggers get completion message
         if mode in ["web", "slack"]:
             send(f"Hunt complete — {len(items)} new unicorn(s) found!")
     else:
-        # CRITICAL FIX: UptimeRobot stays 100% silent when nothing found
+        # ONLY manual triggers get "nothing found" message → UptimeRobot stays silent
         if mode in ["web", "slack"]:
             send("Hunt complete — no new unicorns this time.")
-        # "silent" mode (UptimeRobot) says NOTHING — this stops the spam
 
 # ROUTES
 @app.route("/")
 @app.route("/health")
 def health():
-    return "RARECAST HUNTER ALIVE — UptimeRobot OK", 200
+    return "RARECAST HUNTER ALIVE", 200
 
-@app.route("/uptime")           # UptimeRobot uses this → silent unless unicorn
+@app.route("/uptime")        # UptimeRobot → silent unless real unicorn
 def uptime_hunt():
     threading.Thread(target=run_hunt, args=("silent",)).start()
     return "OK", 200
 
-@app.route("/hunt")             # Web button → full messages
+@app.route("/hunt")          # Web button → full messages
 def web_hunt():
     threading.Thread(target=run_hunt, args=("web",)).start()
     return "<h1>Hunt started — check Slack!</h1>", 200
 
-@app.route("/demo")             # Demo still 100% working
+@app.route("/demo")          # Demo works perfectly
 def demo():
-    send("*DEMO — BOT IS ALIVE & WELL*\nULTRA RARE ★★★★★+\nVision 110 Northern Secret\n¥99,999\nhttps://buyee.jp/item/demo123")
+    send("*DEMO — BOT 100% ALIVE*\nULTRA RARE ★★★★★+\nVision 110 Northern Secret\n¥99,999\nhttps://buyee.jp/item/demo123")
     return "Demo sent!"
 
 @app.route("/slack/events", methods=["POST"])
@@ -203,9 +185,11 @@ def slack_events():
         if text in ["hunt", "run", "go", "hunt now"]:
             threading.Thread(target=run_hunt, args=("slack", user)).start()
         elif text in ["demo", "test", "ping"]:
-            send(f"<@{user}> — Bot is alive and hunting!")
+            send(f"<@{user}> — Bot is alive and ready!")
 
     return "", 200
 
+# Required for Render + Gunicorn
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+    port = int(os.environ.get("PORT", 8000))
+    app.run(host="0.0.0.0", port=port)
