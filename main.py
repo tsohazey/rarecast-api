@@ -49,11 +49,11 @@ UNICORNS = [
     "Sakura Viper","サクラヴァイパー","桜ヴァイパー"
 ]
 
-SERIES = ["vision 110","110 jr","110 +1","i-switch","popmax","popx","pop max","pop x"]
+MODELS = ["vision 110","110 jr","110 +1","i-switch","popmax","popx","pop max","pop x"]
 
 def matches(text):
     t = text.lower()
-    return any(s in t for s in SERIES) and any(u.lower() in t for u in UNICORNS)
+    return any(m in t for m in MODELS) and any(u.lower() in t for u in UNICORNS)
 
 def send(message):
     if SLACK:
@@ -69,56 +69,50 @@ def run_hunt(triggered_by_user=False):
     try:
         r = requests.get("https://www.ebay.com/sch/i.html?_nkw=megabass+(vision+110+OR+popmax+OR+popx+OR+i-switch)&LH_ItemCondition=1000&_sop=10", headers=HEADERS, timeout=15)
         soup = BeautifulSoup(r.text, 'html.parser')
-        for item in soup.find_all("div", class_="s-item__wrapper")[:10]:
+        for item in soup.find_all("div", class_="s-item__wrapper")[:15]:
             title_tag = item.find("div", class_="s-item__title")
             link_tag = item.find("a", class_="s-item__link")
             price_tag = item.find("span", class_="s-item__price")
             if title_tag and link_tag and matches(title_tag.get_text()):
                 title = title_tag.get_text(strip=True)
-                link = "https://www.ebay.com" + link_tag['href'].split("?")[0]
+                link = link_tag['href'].split("?")[0]
                 price = price_tag.get_text(strip=True) if price_tag else "???"
                 alerts.append(f"*EBAY UNICORN*\n{title}\n{price}\n{link}")
     except:
         pass
 
-    # Buyee — INDIVIDUAL LINKS + PRICES (NEW, TESTED)
+    # Buyee — individual links + prices (JPY → USD)
     try:
-        r = requests.get("https://buyee.jp/item/search/query/メガバス%20(ビジョン110%20OR%20ポップマックス%20OR%20ポップX%20OR%20アイスイッチ)&sort=score&order=desc&limit=20", headers=HEADERS, timeout=15)
+        r = requests.get("https://buyee.jp/item/search/query/メガバス%20(ビジョン110%20OR%20ポップマックス%20OR%20ポップX)", headers=HEADERS, timeout=15)
         soup = BeautifulSoup(r.text, 'html.parser')
-        for item in soup.find_all("div", class_="product-list-item")[:10]:
-            title_tag = item.find("div", class_="product-title")
-            link_tag = item.find("a", href=True)
-            price_tag = item.find("span", class_="price")
-            if title_tag and link_tag and matches(title_tag.get_text()):
-                title = title_tag.get_text(strip=True)
-                link = "https://buyee.jp" + link_tag['href']
-                price = price_tag.get_text(strip=True) if price_tag else "???"
-                # Convert JPY to USD (rough, 1 JPY = 0.0067 USD)
+        for a in soup.find_all("a", class_="product__item-link")[:10]:
+            if matches(a.get_text()):
+                title = a.get_text(strip=True)
+                link = "https://buyee.jp" + a['href']
+                price_elem = a.find_next("span", class_="price")
+                price = price_elem.get_text(strip=True) if price_elem else "???"
                 if "¥" in price:
                     jpy = int(price.replace("¥", "").replace(",", ""))
                     usd = round(jpy * 0.0067, 2)
-                    price += f" (${usd})"
+                    price = f"{price} (${usd})"
                 alerts.append(f"*BUYEE UNICORN*\n{title}\n{price}\n{link}")
     except:
         pass
 
-    # Mercari — INDIVIDUAL LINKS + PRICES (NEW, TESTED)
+    # Mercari — individual links + prices (JPY → USD)
     try:
-        r = requests.get("https://jp.mercari.com/search?keyword=メガバス%20(ビジョン110%20OR%20ポップマックス%20OR%20ポップX)&status=on_sale", headers=HEADERS, timeout=15)
+        r = requests.get("https://jp.mercari.com/search?keyword=メガバス%20ビジョン110%20OR%20ポップマックス%20OR%20ポップX&status=on_sale", headers=HEADERS, timeout=15)
         soup = BeautifulSoup(r.text, 'html.parser')
-        for item in soup.find_all("div", class_="items-box")[:10]:
-            title_tag = item.find("h3", class_="items-name")
-            link_tag = item.find("a", href=True)
-            price_tag = item.find("span", class_="items-price")
-            if title_tag and link_tag and matches(title_tag.get_text()):
-                title = title_tag.get_text(strip=True)
-                link = "https://jp.mercari.com" + link_tag['href']
-                price = price_tag.get_text(strip=True) if price_tag else "???"
-                # Convert JPY to USD
+        for a in soup.find_all("a", href=True)[:10]:
+            if "/item/" in a['href'] and matches(a.get_text()):
+                title = a.get_text(strip=True)
+                link = "https://jp.mercari.com" + a['href']
+                price_elem = a.find_next("span", class_="price")
+                price = price_elem.get_text(strip=True) if price_elem else "???"
                 if "円" in price:
                     jpy = int(price.replace("円", "").replace(",", ""))
                     usd = round(jpy * 0.0067, 2)
-                    price += f" (${usd})"
+                    price = f"{price} (${usd})"
                 alerts.append(f"*MERCARI UNICORN*\n{title}\n{price}\n{link}")
     except:
         pass
@@ -139,7 +133,7 @@ def home():
       <a href="/hunt" style="background:#e01e5a;color:white;padding:20px 60px;font-size:50px;border-radius:20px;">RUN HUNT NOW</a>
       <a href="/demo" style="background:#00aa00;color:white;padding:20px 60px;font-size:50px;border-radius:20px;margin-left:20px;">DEMO</a>
     </h2>
-    <p style="text-align:center;color:#666;">Auto-run silent — only pings on hits<br>Type "hunt" in Slack</p>
+    <p style="text-align:center;color:#666;">Auto-run is silent — only pings on hits<br>Type exactly <b>Hunt</b> in Slack</p>
     '''
 
 @app.route("/hunt")
@@ -154,7 +148,7 @@ def auto_hunt():
 
 @app.route("/demo")
 def demo():
-    send("*DEMO MODE*\nMegabass PopMax GP Gerbera — New\n¥4,980 ($33 USD)\nhttps://buyee.jp/item/yahoo/auction/demo123")
+    send("*DEMO MODE*\nVision 110 FA Ghost Kawamutsu — $72\nhttps://ebay.com/itm/demo123")
     return "<h1>Demo sent</h1>"
 
 @app.route("/slack/events", methods=["POST"])
@@ -164,8 +158,8 @@ def slack_events():
         return {"challenge": data["challenge"]}
     event = data.get("event", {})
     if event.get("type") == "message" and not event.get("bot_id"):
-        text = event.get("text", "").strip().lower()
-        if text in ["hunt", "run hunt"]:
+        text = event.get("text", "").strip()
+        if text == "Hunt":
             threading.Thread(target=run_hunt, args=(True,)).start()
             send("Hunt command received — scanning now")
     return "", 200
