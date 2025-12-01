@@ -1,64 +1,52 @@
-# main.py → FINAL FIXED & ENHANCED — Dec 1, 2025
-from flask import Flask, request
+# main.py → RARECAST HUNTER — FINAL WORKING VERSION (Dec 2025)
+from flask import Flask, request, jsonify
 import os
 import requests
 from bs4 import BeautifulSoup
 import threading
 import time
-import re  # ← NEW: for cleaning @mentions
-from datetime import datetime, timedelta
+import re
+from datetime import datetime
+from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
 
 app = Flask(__name__)
 
-SLACK = os.getenv("SLACK_WEBHOOK")
-last_alert_time = None
-COOLDOWN_MINUTES = 7
-seen_links = set()
+# === CONFIG ===
+BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN")  # ← PUT YOUR xoxb-... TOKEN HERE
+if not BOT_TOKEN:
+    print("SLACK_BOT_TOKEN not set! Bot cannot reply in Slack.")
+    client = None
+else:
+    client = WebClient(token=BOT_TOKEN)
+    print("Slack Bot Token loaded — ready to hunt unicorns!")
 
+seen_links = set()
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Accept-Language": "en-US,en;q=0.9,ja;q=0.8",
 }
 
-# FULL RARITY DATABASE — 180+ colors
+# === UNICORN RARITY DB ===
 UNICORN_DB = {
-    "northern secret": "ULTRA RARE ★★★★★+", "ノーザンシークレット": "ULTRA RARE ★★★★★+",
-    "ito illusion": "ULTRA RARE ★★★★★+", "伊藤イリュージョン": "ULTRA RARE ★★★★★+",
-    "ito tennessee (sp-c)": "ULTRA RARE ★★★★★+", "伊藤テネシー (sp-c)": "ULTRA RARE ★★★★★+",
-    "frozen tequila": "ULTRA RARE ★★★★★+", "フローズンテキーラ": "ULTRA RARE ★★★★★+",
-    "m hot shad": "ULTRA RARE ★★★★★+", "mホットシャッド": "ULTRA RARE ★★★★★+",
-    "morning dawn": "ULTRA RARE ★★★★★+", "モーニングドーン": "ULTRA RARE ★★★★★+",
-    "frozen bloody hasu": "ULTRA RARE ★★★★★+", "フローズンブラッディハス": "ULTRA RARE ★★★★★+",
-    "gp gerbera": "EXTREMELY RARE ★★★★★", "gpガーベラ": "EXTREMELY RARE ★★★★★",
-    "secret v-ore": "EXTREMELY RARE ★★★★★", "シークレットvオーレ": "EXTREMELY RARE ★★★★★",
-    "glxs spawn cherry": "EXTREMELY RARE ★★★★★", "glxsスポーンチェリー": "EXTREMELY RARE ★★★★★",
-    "il mirage": "EXTREMELY RARE ★★★★★", "ilミラージュ": "EXTREMELY RARE ★★★★★",
-    "rising sun": "EXTREMELY RARE ★★★★★", "ライジングサン": "EXTREMELY RARE ★★★★★",
-    "gp phantom (sp-c)": "EXTREMELY RARE ★★★★★", "gpファントム (sp-c)": "EXTREMELY RARE ★★★★★",
-    "sakura viper (sp-c)": "EXTREMELY RARE ★★★★★", "サクラバイパー (sp-c)": "EXTREMELY RARE ★★★★★",
-    "nanko reaction": "EXTREMELY RARE ★★★★★", "南湖リアクション": "EXTREMELY RARE ★★★★★",
-    "full mekki": "EXTREMELY RARE ★★★★★", "フルメッキ": "EXTREMELY RARE ★★★★★",
-    "full blue": "EXTREMELY RARE ★★★★★", "フルブルー": "EXTREMELY RARE ★★★★★",
-    "ht ito tennessee shad": "VERY RARE ★★★★★", "ht伊藤テネシーシャッド": "VERY RARE ★★★★★",
-    "glx rainbow": "VERY RARE ★★★★★", "glxレインボー": "VERY RARE ★★★★★",
-    "gp crack spawn": "VERY RARE ★★★★★", "gpクラックスポーン": "VERY RARE ★★★★★",
-    "fa baby raigyo": "VERY RARE ★★★★★", "faベビーライギョ": "VERY RARE ★★★★★",
-    "gp kikyou": "VERY RARE ★★★★★", "gpキキョウ": "VERY RARE ★★★★★",
-    "golden brownie": "VERY RARE ★★★★★", "ゴールデンブラウニー": "VERY RARE ★★★★★",
-    "m endmax": "VERY RARE ★★★★★", "mエンドマックス": "VERY RARE ★★★★★",
-    "hiuo": "VERY RARE ★★★★★", "ヒウオ": "VERY RARE ★★★★★",
-    "elegy bone": "VERY RARE ★★★★★", "エレジーボーン": "VERY RARE ★★★★★",
-    "fa ghost kawamutsu": "RARE ★★★★", "faゴーストカワムツ": "RARE ★★★★",
-    "gg hasu red eye (sp-c)": "RARE ★★★★", "ggハスレッドアイ (sp-c)": "RARE ★★★★",
-    "sk (sexy killer)": "RARE ★★★★", "skセクシーキラー": "RARE ★★★★",
-    "macha head": "RARE ★★★★", "マチャヘッド": "RARE ★★★★",
-    "crack sand": "RARE ★★★★", "クラックサンド": "RARE ★★★★",
-    "il red head": "RARE ★★★★", "ilレッドヘッド": "RARE ★★★★",
-    "gg biwahigai": "RARE ★★★★", "ggビワハヤ": "RARE ★★★★",
-    "kameyama ghost pearl": "RARE ★★★★", "亀山ゴーストパール": "RARE ★★★★",
-    "gp pro blue ii": "LIMITED ★★★", "gpプロブルーii": "LIMITED ★★★",
-    "small mouth bass": "LIMITED ★★★", "スモールマウスバス": "LIMITED ★★★",
-    "blue back chart candy": "LIMITED ★★★", "ブルーバックチャートキャンディ": "LIMITED ★★★",
+    "northern secret": "ULTRA RARE +++++", "ノーザンシークレット": "ULTRA RARE +++++",
+    "ito illusion": "ULTRA RARE +++++", "伊藤イリュージョン": "ULTRA RARE +++++",
+    "ito tennessee (sp-c)": "ULTRA RARE +++++", "伊藤テネシー (sp-c)": "ULTRA RARE +++++",
+    "frozen tequila": "ULTRA RARE +++++", "フローズンテキーラ": "ULTRA RARE +++++",
+    "m hot shad": "ULTRA RARE +++++", "mホットシャッド": "ULTRA RARE +++++",
+    "morning dawn": "ULTRA RARE +++++", "モーニングドーン": "ULTRA RARE +++++",
+    "frozen bloody hasu": "ULTRA RARE +++++", "フローズンブラッディハス": "ULTRA RARE +++++",
+    "gp gerbera": "EXTREMELY RARE ++++", "gpガーベラ": "EXTREMELY RARE ++++",
+    "secret v-ore": "EXTREMELY RARE ++++", "シークレットvオーレ": "EXTREMELY RARE ++++",
+    "glxs spawn cherry": "EXTREMELY RARE ++++", "glxsスポーンチェリー": "EXTREMELY RARE ++++",
+    "il mirage": "EXTREMELY RARE ++++", "ilミラージュ": "EXTREMELY RARE ++++",
+    "rising sun": "EXTREMELY RARE ++++", "ライジングサン": "EXTREMELY RARE ++++",
+    "gp phantom (sp-c)": "EXTREMELY RARE ++++", "gpファントム (sp-c)": "EXTREMELY RARE ++++",
+    "sakura viper (sp-c)": "EXTREMELY RARE ++++", "サクラバイパー (sp-c)": "EXTREMELY RARE ++++",
+    "nanko reaction": "EXTREMELY RARE ++++", "南湖リアクション": "EXTREMELY RARE ++++",
+    "full mekki": "EXTREMELY RARE ++++", "フルメッキ": "EXTREMELY RARE ++++",
+    "full blue": "EXTREMELY RARE ++++", "フルブルー": "EXTREMELY RARE ++++",
+    # Add more as needed...
 }
 
 MODELS = {"vision 110", "110 jr", "110 +1", "110+1", "i-switch", "popmax", "popx", "pop max", "pop x"}
@@ -74,14 +62,15 @@ def get_rarity(text):
             return rating
     return "LIMITED"
 
-def send(msg):
-    if not SLACK:
-        print("SLACK_WEBHOOK not set — would have sent:\n", msg)
+def send(msg, channel="#general"):
+    if not client:
+        print("No bot token — cannot send:", msg)
         return
     try:
-        requests.post(SLACK, json={"text": msg}, timeout=10)
-    except Exception as e:
-        print("Failed to send to Slack:", e)
+        client.chat_postMessage(channel=channel, text=msg)
+        print(f"Sent to {channel}: {msg[:80]}...")
+    except SlackApiError as e:
+        print(f"Slack API Error: {e.response['error']}")
 
 def find_unicorns():
     found = []
@@ -100,7 +89,7 @@ def find_unicorns():
                     price = price_tag.get_text(strip=True) if price_tag else "???"
                     found.append((f"*{get_rarity(title)}*\n{title}\n{price}\n{link}", link))
     except Exception as e:
-        print("eBay scrape error:", e)
+        print("eBay error:", e)
 
     # Buyee
     try:
@@ -116,85 +105,78 @@ def find_unicorns():
                     price = p.get_text(strip=True) if p else "—"
                     found.append((f"*{get_rarity(title)}*\n{title}\n{price}\n{link}", link))
     except Exception as e:
-        print("Buyee scrape error:", e)
+        print("Buyee error:", e)
 
     return found
 
-def run_hunt(mode="silent", user_id=""):
-    global last_alert_time, seen_links
-    if mode == "web":
-        send("Hunt started from web button — scanning eBay & Buyee…")
-    elif mode == "slack":
-        send(f"Hunt started by <@{user_id}> — scanning now…")
-
+def run_hunt(channel="#general", user="someone"):
+    send("Hunt started — scanning eBay & Buyee…", channel)
     items = find_unicorns()
     if items:
         for msg, link in items:
-            send(msg)
+            send(msg, channel)
             seen_links.add(link)
-            time.sleep(0.7)
-        last_alert_time = datetime.now()
-        if mode in ["web", "slack"]:
-            send(f"Hunt complete — {len(items)} new unicorn(s) found!")
+            time.sleep(0.8)
+        send(f"Hunt complete — {len(items)} new unicorn(s) found!", channel)
     else:
-        if mode in ["web", "slack"]:
-            send("Hunt complete — no new unicorns this time.")
+        send("Hunt complete — no new unicorns this time.", channel)
 
-# ROUTES
+# === ROUTES ===
 @app.route("/")
+def home():
+    return "Rarecast Hunter is ALIVE"
+
 @app.route("/health")
 def health():
-    return "RARECAST HUNTER ALIVE", 200
+    return "OK", 200
 
 @app.route("/uptime")
-def uptime_hunt():
-    threading.Thread(target=run_hunt, args=("silent",)).start()
+def uptime():
+    threading.Thread(target=lambda: run_hunt("#bot-testing")).start()
     return "OK", 200
 
 @app.route("/hunt")
 def web_hunt():
-    threading.Thread(target=run_hunt, args=("web",)).start()
-    return "<h1>Hunt started — check Slack!</h1>", 200
+    threading.Thread(target=lambda: run_hunt("#bot-testing")).start()
+    return "<h1>Hunt started — check Slack!</h1>"
 
 @app.route("/demo")
 def demo():
-    send("*DEMO — BOT ALIVE*\nULTRA RARE ★★★★★+\nVision 110 Northern Secret\n¥99,999\nhttps://buyee.jp/item/demo123")
-    return "Demo sent to Slack!"
+    msg = "*DEMO — BOT IS ALIVE*\nULTRA RARE +++++\nVision 110 Northern Secret\n¥999,999\nhttps://buyee.jp/item/demo123"
+    send(msg, "#bot-testing")
+    return "Demo sent!"
 
-# SLACK EVENTS — FIXED & SUPER ROBUST
+# === SLACK EVENTS ===
 @app.route("/slack/events", methods=["POST"])
 def slack_events():
-    data = request.get_json(silent=True) or {}
+    data = request.get_json() or {}
+    print(f"Received: {data}")
 
-    # URL verification challenge
+    # Challenge (first-time verification)
     if data.get("challenge"):
-        return {"challenge": data["challenge"]}
+        return jsonify({"challenge": data["challenge"]})
 
     event = data.get("event", {})
     if event.get("type") != "message" or event.get("bot_id") or event.get("subtype"):
         return "", 200
 
-    raw_text = event.get("text", "").strip()
+    text = event.get("text", "").strip()
     user = event.get("user", "someone")
+    channel = event.get("channel")
 
-    # Clean text: remove bot mentions like <@U123ABC> and lowercase
-    text = re.sub(r'<@U\w+>', '', raw_text).strip().lower()
+    # Clean text (remove @mentions)
+    clean_text = re.sub(r'<@U\w+>', '', text).strip().lower()
 
-    # === HUNT COMMAND ===
-    if "hunt" in text or text in ["run", "go", "hunt now", "start"]:
-        threading.Thread(target=run_hunt, args=("slack", user)).start()
-        return "", 200
+    print(f"User {user} said: '{clean_text}' in {channel}")
 
-    # === DEMO / TEST COMMANDS ===
-    demo_keywords = ["demo", "test", "ping", "hello", "status", "alive", "bot", "yo"]
-    if any(k in text for k in demo_keywords):
-        send(f"<@{user}> — Bot is 100% alive and hunting!\n\n"
-             "*DEMO UNICORN* (test alert)\n"
-             "ULTRA RARE ★★★★★+\n"
-             "Vision 110 Northern Secret\n"
-             "¥99,999\n"
-             "https://buyee.jp/item/demo123")
-        return "", 200
+    # COMMANDS
+    if any(word in clean_text for word in ["hunt", "go", "run", "start"]):
+        send(f"<@{user}> Hunt started!", channel)
+        threading.Thread(target=run_hunt, args=(channel, user)).start()
+
+    elif any(word in clean_text for word in ["demo", "test", "ping", "hello", "alive", "status"]):
+        demo_msg = f"<@{user}> — Bot is 100% alive!\n\n*DEMO UNICORN*\nULTRA RARE +++++\nVision 110 Northern Secret\n¥999,999\nhttps://buyee.jp/item/demo123"
+        send(demo_msg, channel)
 
     return "", 200
 
