@@ -9,7 +9,7 @@ SLACK = os.getenv("SLACK_WEBHOOK")
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
-# YOUR FULL UPDATED MASTER LIST — ALL 180+ UNICORNS + JAPANESE
+# FULL 180+ UNICORN LIST + JAPANESE (COMPLETE)
 UNICORNS = [
     "Aka Tora (SP-C)","赤虎 SP-C",
     "Aurora Reaction","オーロラリアクション",
@@ -82,7 +82,6 @@ UNICORNS = [
     "M Golden Lime","M ゴールデンライム",
     "M Hot Shad","M ホットシャッド",
     "M Western Clown","M ウェスタンクロウン",
-    "Macha Head","マチャヘッド",
     "Macha Head","マチャヘッド",
     "Mat Pro Blue Chart","マットプロブルーチャート",
     "Mat Shad","マットシャッド",
@@ -220,6 +219,7 @@ UNICORNS = [
     "Viper French Sakura","ヴァイパーフレンチサクラ",
     "Wakasagi French FA","ワカサギフレンチFA",
     "Bone French Modena","ボーンフレンチモデナ",
+    ",
     "Clown French Western","クロウンフレンチウェスタン",
     "Dorado French Genroku","ドラドフレンチゲンロク",
     "Frog French Crystal","フロッグフレンチクリスタル",
@@ -316,18 +316,39 @@ def run_hunt(triggered_by_user=False):
     except:
         pass
 
-    # Buyee & Mercari — fallback search links
+    # Buyee — individual links + prices
     try:
         r = requests.get("https://buyee.jp/item/search/query/メガバス%20(ビジョン110%20OR%20ポップマックス%20OR%20ポップX)", headers=HEADERS, timeout=15)
-        if matches(r.text):
-            alerts.append("*BUYEE HIT*\nhttps://buyee.jp/item/search/query/メガバス%20(ビジョン110%20OR%20ポップマックス%20OR%20ポップX)")
+        soup = BeautifulSoup(r.text, 'html.parser')
+        for a in soup.find_all("a", class_="product__item-link")[:10]:
+            if matches(a.get_text()):
+                title = a.get_text(strip=True)
+                link = "https://buyee.jp" + a['href']
+                price_elem = a.find_next("span", class_="price")
+                price = price_elem.get_text(strip=True) if price_elem else "???"
+                if "¥" in price:
+                    jpy = int(price.replace("¥", "").replace(",", ""))
+                    usd = round(jpy * 0.0067, 2)
+                    price = f"{price} (${usd})"
+                alerts.append(f"*BUYEE UNICORN*\n{title}\n{price}\n{link}")
     except:
         pass
 
+    # Mercari — individual links + prices
     try:
         r = requests.get("https://jp.mercari.com/search?keyword=メガバス%20ビジョン110%20OR%20ポップマックス%20OR%20ポップX&status=on_sale", headers=HEADERS, timeout=15)
-        if matches(r.text):
-            alerts.append("*MERCARI HIT*\nhttps://jp.mercari.com/search?keyword=メガバス%20ビジョン110%20OR%20ポップマックス%20OR%20ポップX&status=on_sale")
+        soup = BeautifulSoup(r.text, 'html.parser')
+        for a in soup.find_all("a", href=True)[:10]:
+            if "/item/" in a['href'] and matches(a.get_text()):
+                title = a.get_text(strip=True)
+                link = "https://jp.mercari.com" + a['href']
+                price_elem = a.find_next("span", class_="price")
+                price = price_elem.get_text(strip=True) if price_elem else "???"
+                if "円" in price:
+                    jpy = int(price.replace("円", "").replace(",", ""))
+                    usd = round(jpy * 0.0067, 2)
+                    price = f"{price} (${usd})"
+                alerts.append(f"*MERCARI UNICORN*\n{title}\n{price}\n{link}")
     except:
         pass
 
@@ -379,4 +400,4 @@ def slack_events():
     return "", 200
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
