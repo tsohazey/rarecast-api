@@ -1,15 +1,16 @@
-# main.py → FINAL PERFECT VERSION — Dec 1, 2025
+# main.py → FINAL FIXED & ENHANCED — Dec 1, 2025
 from flask import Flask, request
 import os
 import requests
 from bs4 import BeautifulSoup
 import threading
 import time
+import re  # ← NEW: for cleaning @mentions
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
-SLACK = os.getenv("SLACK_WEBHOOK")
 
+SLACK = os.getenv("SLACK_WEBHOOK")
 last_alert_time = None
 COOLDOWN_MINUTES = 7
 seen_links = set()
@@ -60,7 +61,7 @@ UNICORN_DB = {
     "blue back chart candy": "LIMITED ★★★", "ブルーバックチャートキャンディ": "LIMITED ★★★",
 }
 
-MODELS = {"vision 110","110 jr","110 +1","110+1","i-switch","popmax","popx","pop max","pop x"}
+MODELS = {"vision 110", "110 jr", "110 +1", "110+1", "i-switch", "popmax", "popx", "pop max", "pop x"}
 
 def is_unicorn(text):
     t = text.lower()
@@ -75,11 +76,12 @@ def get_rarity(text):
 
 def send(msg):
     if not SLACK:
+        print("SLACK_WEBHOOK not set — would have sent:\n", msg)
         return
     try:
         requests.post(SLACK, json={"text": msg}, timeout=10)
-    except:
-        pass
+    except Exception as e:
+        print("Failed to send to Slack:", e)
 
 def find_unicorns():
     found = []
@@ -97,8 +99,8 @@ def find_unicorns():
                     title = title_tag.get_text(strip=True)
                     price = price_tag.get_text(strip=True) if price_tag else "???"
                     found.append((f"*{get_rarity(title)}*\n{title}\n{price}\n{link}", link))
-    except:
-        pass
+    except Exception as e:
+        print("eBay scrape error:", e)
 
     # Buyee
     try:
@@ -113,21 +115,19 @@ def find_unicorns():
                     title = a.get_text(strip=True)
                     price = p.get_text(strip=True) if p else "—"
                     found.append((f"*{get_rarity(title)}*\n{title}\n{price}\n{link}", link))
-    except:
-        pass
+    except Exception as e:
+        print("Buyee scrape error:", e)
 
     return found
 
 def run_hunt(mode="silent", user_id=""):
     global last_alert_time, seen_links
-
     if mode == "web":
         send("Hunt started from web button — scanning eBay & Buyee…")
     elif mode == "slack":
         send(f"Hunt started by <@{user_id}> — scanning now…")
 
     items = find_unicorns()
-
     if items:
         for msg, link in items:
             send(msg)
@@ -139,7 +139,6 @@ def run_hunt(mode="silent", user_id=""):
     else:
         if mode in ["web", "slack"]:
             send("Hunt complete — no new unicorns this time.")
-        # UptimeRobot ("silent") → no message ever
 
 # ROUTES
 @app.route("/")
@@ -147,12 +146,12 @@ def run_hunt(mode="silent", user_id=""):
 def health():
     return "RARECAST HUNTER ALIVE", 200
 
-@app.route("/uptime")           # UptimeRobot → silent unless real find
+@app.route("/uptime")
 def uptime_hunt():
     threading.Thread(target=run_hunt, args=("silent",)).start()
     return "OK", 200
 
-@app.route("/hunt")             # Web button
+@app.route("/hunt")
 def web_hunt():
     threading.Thread(target=run_hunt, args=("web",)).start()
     return "<h1>Hunt started — check Slack!</h1>", 200
@@ -160,33 +159,42 @@ def web_hunt():
 @app.route("/demo")
 def demo():
     send("*DEMO — BOT ALIVE*\nULTRA RARE ★★★★★+\nVision 110 Northern Secret\n¥99,999\nhttps://buyee.jp/item/demo123")
-    return "Demo sent!"
+    return "Demo sent to Slack!"
 
-# SLACK — FIXED & WORKING 100%
+# SLACK EVENTS — FIXED & SUPER ROBUST
 @app.route("/slack/events", methods=["POST"])
 def slack_events():
     data = request.get_json(silent=True) or {}
+
+    # URL verification challenge
     if data.get("challenge"):
         return {"challenge": data["challenge"]}
 
     event = data.get("event", {})
-    if (event.get("type") == "message" 
-        and not event.get("bot_id") 
-        and not event.get("subtype")):
+    if event.get("type") != "message" or event.get("bot_id") or event.get("subtype"):
+        return "", 200
 
-        text = event.get("text", "").strip().lower()
-        user = event.get("user", "someone")
+    raw_text = event.get("text", "").strip()
+    user = event.get("user", "someone")
 
-        if text in ["hunt", "run", "go", "hunt now"]:
-            threading.Thread(target=run_hunt, args=("slack", user)).start()
+    # Clean text: remove bot mentions like <@U123ABC> and lowercase
+    text = re.sub(r'<@U\w+>', '', raw_text).strip().lower()
 
-        elif text in ["demo", "test", "ping", "hello", "status", "alive"]:
-            send(f"<@{user}> — Bot is 100% alive and hunting!\n\n"
-                 "*DEMO UNICORN*\n"
-                 "ULTRA RARE ★★★★★+\n"
-                 "Vision 110 Northern Secret\n"
-                 "¥99,999\n"
-                 "https://buyee.jp/item/demo123")
+    # === HUNT COMMAND ===
+    if "hunt" in text or text in ["run", "go", "hunt now", "start"]:
+        threading.Thread(target=run_hunt, args=("slack", user)).start()
+        return "", 200
+
+    # === DEMO / TEST COMMANDS ===
+    demo_keywords = ["demo", "test", "ping", "hello", "status", "alive", "bot", "yo"]
+    if any(k in text for k in demo_keywords):
+        send(f"<@{user}> — Bot is 100% alive and hunting!\n\n"
+             "*DEMO UNICORN* (test alert)\n"
+             "ULTRA RARE ★★★★★+\n"
+             "Vision 110 Northern Secret\n"
+             "¥99,999\n"
+             "https://buyee.jp/item/demo123")
+        return "", 200
 
     return "", 200
 
