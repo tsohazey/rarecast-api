@@ -1,4 +1,4 @@
-# main.py → FINAL 100% WORKING VERSION (Render + Gunicorn compatible)
+# main.py → FINAL BULLETPROOF VERSION — ZERO PINGS UNLESS REAL UNICORN
 from flask import Flask, request
 import os
 import requests
@@ -20,7 +20,7 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9,ja;q=0.8",
 }
 
-# FULL RARITY DATABASE (180+ colors)
+# FULL RARITY DATABASE (keep your full 180+ list here)
 UNICORN_DB = {
     "northern secret": "ULTRA RARE ★★★★★+", "ノーザンシークレット": "ULTRA RARE ★★★★★+",
     "ito illusion": "ULTRA RARE ★★★★★+", "伊藤イリュージョン": "ULTRA RARE ★★★★★+",
@@ -146,7 +146,7 @@ def run_hunt(mode="silent", user_id=""):
         if mode in ["web", "slack"]:
             send(f"Hunt complete — {len(items)} new unicorn(s) found!")
     else:
-        # ONLY manual triggers get "nothing found" message → UptimeRobot stays silent
+        # CRITICAL: UptimeRobot ("silent") NEVER sends "nothing found"
         if mode in ["web", "slack"]:
             send("Hunt complete — no new unicorns this time.")
 
@@ -156,7 +156,7 @@ def run_hunt(mode="silent", user_id=""):
 def health():
     return "RARECAST HUNTER ALIVE", 200
 
-@app.route("/uptime")        # UptimeRobot → silent unless real unicorn
+@app.route("/uptime")        # UptimeRobot → silent unless unicorn
 def uptime_hunt():
     threading.Thread(target=run_hunt, args=("silent",)).start()
     return "OK", 200
@@ -189,7 +189,5 @@ def slack_events():
 
     return "", 200
 
-# Required for Render + Gunicorn
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
