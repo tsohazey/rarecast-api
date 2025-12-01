@@ -2,82 +2,76 @@ from flask import Flask
 import os
 import requests
 from bs4 import BeautifulSoup
-import time
 
 app = Flask(__name__)
 SLACK = os.getenv("SLACK_WEBHOOK")
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/129.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 }
 
 TARGET_KEYWORDS = [
-    "FA Ghost Kawamutsu", "FA ゴーストカワムツ", "ゴーストカワムツ",
-    "ビジョン ワンテン FA", "Vision Oneten FA Ghost"
+    "FA Ghost Kawamutsu",
+    "FA ゴーストカワムツ",
+    "ゴーストカワムツ",
+    "ghost kawamutsu"
 ]
 
 def send_slack(message):
-    if not SLACK:
-        return
-    payload = {"text": message}
-    try:
-        requests.post(SLACK, json=payload, timeout=10)
-    except:
-        :
-        pass
+    if SLACK:
+        try:
+            requests.post(SLACK, json={"text": message}, timeout=10)
+        except:
+            pass
 
 def check_ebay():
+    url = "https://www.ebay.com/sch/i.html?_nkw=megabass+FA+Ghost+Kawamutsu&_sop=10&LH_BIN=1"
     try:
-        url = "https://www.ebay.com/sch/i.html?_nkw=megabass+FA+Ghost+Kawamutsu&_sacat=0&LH_TitleDesc=0&rt=nc&LH_ItemCondition=1000"
-        r = requests.get(url, headers=HEADERS, timeout=15)
-        soup = BeautifulSoup(r.text, 'html.parser')
-        titles = soup.find_all("div", class_="s-item__title")
-        for t in titles[:10]:
-            text = t.get_text().lower()
-            if any(k.lower() in text for k in TARGET_KEYWORDS) and "sold" not in text:
-                send_slack(f"*EBAY HIT*\n{t.get_text()}\n{url}")
-                return True
+        r = requests.get(url, headers=HEADERS, timeout=12)
+        if any(k.lower() in r.text.lower() for k in TARGET_KEYWORDS):
+            send_slack(f"*EBAY UNICORN*\nFA Ghost Kawamutsu live right now!\n{url}")
+            return "eBay"
     except:
         pass
-    return False
+    return None
 
 def check_buyee():
+    url = "https://buyee.jp/item/search/query/megabass%20ゴーストカワムツ"
     try:
-        url = "https://buyee.jp/item/search/query/megabass%20ゴーストカワムツ?translationType=1"
-        r = requests.get(url, headers=HEADERS, timeout=15)
+        r = requests.get(url, headers=HEADERS, timeout=12)
         if any(k.lower() in r.text.lower() for k in TARGET_KEYWORDS):
-            send_slack(f"*BUYEE HIT*\nFA Ghost Kawamutsu found!\n{url}")
-            return True
+            send_slack(f"*BUYEE UNICORN*\nFA Ghost Kawamutsu spotted!\n{url}")
+            return "Buyee"
     except:
         pass
-    return False
+    return None
 
 def check_mercari():
+    url = "https://jp.mercari.com/search?keyword=megabass%20ゴーストカワムツ"
     try:
-        url = "https://jp.mercari.com/search?keyword=megabass%20ゴーストカワムツ"
-        r = requests.get(url, headers=HEADERS, timeout=15)
+        r = requests.get(url, headers=HEADERS, timeout=12)
         if any(k.lower() in r.text.lower() for k in TARGET_KEYWORDS):
-            send_slack(f"*MERCARI HIT*\nFA Ghost Kawamutsu spotted!\n{url}")
-            return True
+            send_slack(f"*MERCARI UNICORN*\nFA Ghost Kawamutsu live!\n{url}")
+            return "Mercari"
     except:
         pass
-    return False
+    return None
 
 @app.route("/")
 def home():
-    return '<h1>RareCast Scrubber LIVE</h1><h2><a href="/scrub">RUN SCRUB NOW</a></h2>'
+    return '<h1 style="text-align:center;margin-top:100px;font-size:60px">RareCast Scrubber LIVE</h1><h2 style="text-align:center"><a href="/scrub" style="color:#ff0000;font-size:50px">RUN SCRUB NOW</a></h2>'
 
 @app.route("/scrub")
 def scrub():
     hits = []
-    if check_ebay(): hits.append("eBay")
-    if check_buyee(): hits.append("Buyee")
+    if check_ebay():   hits.append("eBay")
+    if check_buyee():  hits.append("Buyee")
     if check_mercari(): hits.append("Mercari")
 
     if hits:
-        return f"<h1 style='color:red'>FOUND ON: {', '.join(hits)}</h1>"
+        return f"<h1 style='color:red;text-align:center'>FOUND ON: {', '.join(hits)}</h1>"
     else:
-        return "<h1>No FA Ghost Kawamutsu right now — checking again soon</h1>"
+        return "<h1 style='text-align:center'>No FA Ghost Kawamutsu right now — will keep checking</h1>"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
