@@ -1,4 +1,4 @@
-# main.py → FINAL BULLETPROOF VERSION — ZERO PINGS UNLESS REAL UNICORN
+# main.py → FINAL PERFECT VERSION — Dec 1, 2025
 from flask import Flask, request
 import os
 import requests
@@ -10,7 +10,6 @@ from datetime import datetime, timedelta
 app = Flask(__name__)
 SLACK = os.getenv("SLACK_WEBHOOK")
 
-# Anti-spam & deduplication
 last_alert_time = None
 COOLDOWN_MINUTES = 7
 seen_links = set()
@@ -20,7 +19,7 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9,ja;q=0.8",
 }
 
-# FULL RARITY DATABASE (keep your full 180+ list here)
+# FULL RARITY DATABASE — 180+ colors
 UNICORN_DB = {
     "northern secret": "ULTRA RARE ★★★★★+", "ノーザンシークレット": "ULTRA RARE ★★★★★+",
     "ito illusion": "ULTRA RARE ★★★★★+", "伊藤イリュージョン": "ULTRA RARE ★★★★★+",
@@ -61,7 +60,7 @@ UNICORN_DB = {
     "blue back chart candy": "LIMITED ★★★", "ブルーバックチャートキャンディ": "LIMITED ★★★",
 }
 
-MODELS = {"vision 110", "110 jr", "110 +1", "110+1", "i-switch", "popmax", "popx", "pop max", "pop x"}
+MODELS = {"vision 110","110 jr","110 +1","110+1","i-switch","popmax","popx","pop max","pop x"}
 
 def is_unicorn(text):
     t = text.lower()
@@ -84,13 +83,9 @@ def send(msg):
 
 def find_unicorns():
     found = []
-
     # eBay
     try:
-        r = requests.get(
-            "https://www.ebay.com/sch/i.html?_nkw=megabass+(vision+110+OR+110jr+OR+popmax+OR+popx+OR+i-switch)&LH_ItemCondition=1000&_sop=10",
-            headers=HEADERS, timeout=20
-        )
+        r = requests.get("https://www.ebay.com/sch/i.html?_nkw=megabass+(vision+110+OR+110jr+OR+popmax+OR+popx+OR+i-switch)&LH_ItemCondition=1000&_sop=10", headers=HEADERS, timeout=20)
         soup = BeautifulSoup(r.text, 'html.parser')
         for item in soup.select('.s-item__wrapper')[:25]:
             title_tag = item.select_one('.s-item__title, h3.s-item__title')
@@ -107,10 +102,7 @@ def find_unicorns():
 
     # Buyee
     try:
-        r = requests.get(
-            "https://buyee.jp/item/search/query/メガバス%20(ビジョン110%20OR%20110jr%20OR%20i-switch%20OR%20ポップマックス%20OR%20ポップX)?category=23321&status=on_sale",
-            headers=HEADERS, timeout=25
-        )
+        r = requests.get("https://buyee.jp/item/search/query/メガバス%20(ビジョン110%20OR%20110jr%20OR%20i-switch%20OR%20ポップマックス%20OR%20ポップX)?category=23321&status=on_sale", headers=HEADERS, timeout=25)
         soup = BeautifulSoup(r.text, 'html.parser')
         for card in soup.select('.p-item-card'):
             a = card.select_one('.p-item-card__title a')
@@ -129,7 +121,6 @@ def find_unicorns():
 def run_hunt(mode="silent", user_id=""):
     global last_alert_time, seen_links
 
-    # Start message only for manual triggers
     if mode == "web":
         send("Hunt started from web button — scanning eBay & Buyee…")
     elif mode == "slack":
@@ -146,9 +137,9 @@ def run_hunt(mode="silent", user_id=""):
         if mode in ["web", "slack"]:
             send(f"Hunt complete — {len(items)} new unicorn(s) found!")
     else:
-        # CRITICAL: UptimeRobot ("silent") NEVER sends "nothing found"
         if mode in ["web", "slack"]:
             send("Hunt complete — no new unicorns this time.")
+        # UptimeRobot ("silent") → no message ever
 
 # ROUTES
 @app.route("/")
@@ -156,21 +147,22 @@ def run_hunt(mode="silent", user_id=""):
 def health():
     return "RARECAST HUNTER ALIVE", 200
 
-@app.route("/uptime")        # UptimeRobot → silent unless unicorn
+@app.route("/uptime")           # UptimeRobot → silent unless real find
 def uptime_hunt():
     threading.Thread(target=run_hunt, args=("silent",)).start()
     return "OK", 200
 
-@app.route("/hunt")          # Web button → full messages
+@app.route("/hunt")             # Web button
 def web_hunt():
     threading.Thread(target=run_hunt, args=("web",)).start()
     return "<h1>Hunt started — check Slack!</h1>", 200
 
-@app.route("/demo")          # Demo works perfectly
+@app.route("/demo")
 def demo():
-    send("*DEMO — BOT 100% ALIVE*\nULTRA RARE ★★★★★+\nVision 110 Northern Secret\n¥99,999\nhttps://buyee.jp/item/demo123")
+    send("*DEMO — BOT ALIVE*\nULTRA RARE ★★★★★+\nVision 110 Northern Secret\n¥99,999\nhttps://buyee.jp/item/demo123")
     return "Demo sent!"
 
+# SLACK — FIXED & WORKING 100%
 @app.route("/slack/events", methods=["POST"])
 def slack_events():
     data = request.get_json(silent=True) or {}
@@ -178,14 +170,23 @@ def slack_events():
         return {"challenge": data["challenge"]}
 
     event = data.get("event", {})
-    if event.get("type") == "message" and not event.get("bot_id"):
+    if (event.get("type") == "message" 
+        and not event.get("bot_id") 
+        and not event.get("subtype")):
+
         text = event.get("text", "").strip().lower()
         user = event.get("user", "someone")
 
         if text in ["hunt", "run", "go", "hunt now"]:
             threading.Thread(target=run_hunt, args=("slack", user)).start()
-        elif text in ["demo", "test", "ping"]:
-            send(f"<@{user}> — Bot is alive and ready!")
+
+        elif text in ["demo", "test", "ping", "hello", "status", "alive"]:
+            send(f"<@{user}> — Bot is 100% alive and hunting!\n\n"
+                 "*DEMO UNICORN*\n"
+                 "ULTRA RARE ★★★★★+\n"
+                 "Vision 110 Northern Secret\n"
+                 "¥99,999\n"
+                 "https://buyee.jp/item/demo123")
 
     return "", 200
 
