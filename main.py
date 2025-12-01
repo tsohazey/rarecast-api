@@ -5,46 +5,79 @@ import requests
 app = Flask(__name__)
 SLACK = os.getenv("SLACK_WEBHOOK")
 
-HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+}
 
-# YOUR FULL 25-COLOR HITLIST — ONLY THESE TRIGGER ALERTS
+# FULL 34-COLOR UNICORN LIST + JAPANESE KEYWORDS
 UNICORNS = [
-    "HT Ito Tennessee Shad",    "GP Gerbera",           "FA Ghost Kawamutsu",
-    "GLX Rainbow",              "Ito Tennessee (SP-C)", "GP Pro Blue II",
-    "Secret V-Ore",             "GP Crack Spawn",       "GG Biwahigai",
-    "FA Baby Raigyo",           "GLXS Spawn Cherry",    "SK (Sexy Killer)",
-    "GP Kikyou",                "Small Mouth Bass",     "Macha Head",
-    "Golden Brownie",           "Ito Illusion",         "Rising Sun",
-    "M Endmax",                 "Northern Secret",      "Crack Sand",
-    "Hiuo",                     "IL Mirage",            "Blue Back Chart Candy",
-    "IL Red Head"
+    "HT Ito Tennessee Shad","HT 伊藤テネシーシャッド","HTテネシー",
+    "GP Gerbera","GP ガーベラ","ガーベラ",
+    "FA Ghost Kawamutsu","FA ゴーストカワムツ","ゴーストカワムツ",
+    "GLX Rainbow","GLX レインボー","GLXレインボー",
+    "Ito Tennessee (SP-C)","伊藤テネシー SP-C","ITO Tennessee SP-C",
+    "GP Pro Blue II","GP プロブルーⅡ","プロブルー2",
+    "Secret V-Ore","シークレット Vオレ","V-オレ",
+    "GP Crack Spawn","GP クラックスポーン","クラックスポーン",
+    "GG Biwahigai","GG ビワヒガイ","ビワヒガイ",
+    "FA Baby Raigyo","FA ベビーライギョ","ベビーライギョ",
+    "GLXS Spawn Cherry","GLXS スポーンチェリー","スポーンチェリー",
+    "SK (Sexy Killer)","SK セクシーキラー","セクシーキラー",
+    "GP Kikyou","GP キキョウ","キキキョウ",
+    "Small Mouth Bass","スモールマウスバス",
+    "Macha Head","マチャヘッド",
+    "Golden Brownie","ゴールデンブラウニー",
+    "Ito Illusion","伊藤イリュージョン","ITO Illusion",
+    "Rising Sun","ライジングサン",
+    "M Endmax","M エンドマックス","エンドマックス",
+    "Northern Secret","ノーザンシークレット",
+    "Crack Sand","クラックサンド",
+    "Hiuo","ヒウオ",
+    "IL Mirage","IL ミラージュ","ミラージュ",
+    "Blue Back Chart Candy","ブルーバックチャートキャンディ",
+    "IL Red Head","IL レッドヘッド","レッドヘッド",
+    "Morning Dawn","モーニングドーン",
+    "GP Phantom (SP-C)","GP ファントム SP-C","GP Phantom",
+    "GG Hasu Red Eye (SP-C)","GG ハスレッドアイ SP-C","ハスレッドアイ",
+    "Kameyama Ghost Pearl","亀山ゴーストパール","カメヤマゴースト",
+    "M Hot Shad","M ホットシャッド",
+    "Nanko Reaction","ナンコウリアクション",
+    "SB PB Stain Reaction","SB PB ステインリアクション",
+    "Frozen Tequila","フローズンテキーラ",
+    "Sakura Viper","サクラヴァイパー","桜ヴァイパー"
 ]
 
-# JAPANESE KEYWORDS (so we never miss a listing)
-JAPAN = [
-    "伊藤テネシー, ガーベラ, ゴーストカワムツ, レインボー, プロブルーⅡ,
-    Vオレ, クラックスポーン, ビワヒガイ, ベビーライギョ, スポーンチェリー,
-    セクシーキラー, キキョウ, マチャヘッド, ゴールデンブラウニー, イリュージョン,
-    ライジングサン, エンドマックス, ノーザンシークレット, クラックサンド,
-    ヒウオ, ミラージュ, ブルーバックチャートキャンディ, レッドヘッド
+# ONLY THESE SERIES — Vision 110 series, PopMax, PopX, I-Switch
+SERIES = [
+    "vision 110", "onet en 110", "110 jr", "110 +1", "110+1", "110+1 jr",
+    "i-switch", "popmax", "popx", "pop max", "pop x"
 ]
-
-# SERIES WE CARE ABOUT
-SERIES = ["Vision 110", "Oneten 110", "110 Jr", "110 +1", "110+1 Jr", "I-Switch", "PopMax", "PopX"]
 
 def matches(text):
-    text = text.lower()
-    if not any(s.lower() in text for s in SERIES):
+    t = text.lower()
+    if not any(s in t for s in SERIES):
         return False
-    return any(u.lower() in text for u in UNICORNS + JAPAN)
+    return any(u.lower() in t for u in UNICORNS)
 
-def send(message):
+def send_slack(message):
     if SLACK:
-        requests.post(SLACK, json={"text": message}, timeout=10)
+        try:
+            requests.post(SLACK, json={"text": message}, timeout=10)
+        except:
+            pass
 
 @app.route("/")
 def home():
-    return '<h1>RareCast FULL HUNTER LIVE</h1><h2><a href="/hunt">RUN FULL HUNT (25 colors)</a></h2>'
+    return '''
+    <h1 style="text-align:center; margin-top:100px; font-size:70px; color:#ff0044">
+      RARECAST FULL HUNTER
+    </h1>
+    <h2 style="text-align:center;">
+      <a href="/hunt" style="color:white; background:#e01e5a; padding:20px 60px; font-size:50px; text-decoration:none; border-radius:20px;">
+        RUN HUNT — 34 Colors
+      </a>
+    </h2>
+    '''
 
 @app.route("/hunt")
 def hunt():
@@ -52,35 +85,35 @@ def hunt():
 
     # eBay
     try:
-        r = requests.get("https://www.ebay.com/sch/i.html?_nkw=megabass+vision+110+OR+popmax+OR+popx+OR+i-switch&_sop=10&LH_BIN=1", headers=HEADERS, timeout=15)
-        for line in r.text.splitlines():
-            if matches(line):
-                hits.append(f"eBay: {line[:100]}...")
-                break
+        r = requests.get("https://www.ebay.com/sch/i.html?_nkw=megabass+(vision+110+OR+popmax+OR+popx+OR+i-switch)&_sop=10", headers=HEADERS, timeout=15)
+        if matches(r.text):
+            hits.append("eBay")
+            send_slack(f"*UNICORN ON EBAY*\n34-color match found!\nhttps://www.ebay.com/sch/i.html?_nkw=megabass+(vision+110+OR+popmax+OR+popx+OR+i-switch)")
     except:
         pass
 
-    # Buyee
+    # Buyee / Yahoo Auctions
     try:
-        r = requests.get("https://buyee.jp/item/search/query/メガバス%20110%20OR%20ポップマックス%20OR%20ポップX", headers=HEADERS, timeout=15)
+        r = requests.get("https://buyee.jp/item/search/query/メガバス%20(ビジョン110%20OR%20ポップマックス%20OR%20ポップX%20OR%20アイスイッチ)", headers=HEADERS, timeout=15)
         if matches(r.text):
-            hits.append("Buyee hit")
+            hits.append("Buyee")
+            send_slack(f"*UNICORN ON BUYEE*\n34-color match found!\nhttps://buyee.jp/item/search/query/メガバス%20(ビジョン110%20OR%20ポップマックス%20OR%20ポップX%20OR%20アイスイッチ)")
     except:
         pass
 
     # Mercari
     try:
-        r = requests.get("https://jp.mercari.com/search?keyword=メガバス%20110%20OR%20ポップマックス%20OR%20ポップX", headers=HEADERS, timeout=15)
+        r = requests.get("https://jp.mercari.com/search?keyword=メガバス%20(ビジョン110%20OR%20ポップマックス%20OR%20ポップX)", headers=HEADERS, timeout=15)
         if matches(r.text):
-            hits.append("Mercari hit")
+            hits.append("Mercari")
+            send_slack(f"*UNICORN ON MERCARI*\n34-color match found!\nhttps://jp.mercari.com/search?keyword=メガバス%20(ビジョン110%20OR%20ポップマックス%20OR%20ポップX)")
     except:
         pass
 
     if hits:
-        send("*RARECAST FULL ALERT*\n25-color unicorn spotted!\n" + "\n".join(hits))
-        return "<h1 style='color:red'>UNICORNS FOUND — CHECK SLACK</h1>"
+        return f"<h1 style='color:red; text-align:center; font-size:80px'>FOUND ON: {', '.join(hits)}</h1>"
     else:
-        return "<h1>No unicorns right now — checking every time you click</h1>"
+        return "<h1 style='text-align:center; font-size:50px'>No unicorns right now — hunter is running</h1>"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
