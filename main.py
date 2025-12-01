@@ -11,7 +11,7 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 }
 
-# YOUR 34 UNICORNS + JAPANESE
+# YOUR FULL 34 UNICORN COLORS + JAPANESE
 UNICORNS = [
     "HT Ito Tennessee Shad","HT 伊藤テネシーシャッド","HTテネシー",
     "GP Gerbera","GP ガーベラ","ガーベラ",
@@ -53,9 +53,7 @@ SERIES = ["vision 110","110 jr","110 +1","i-switch","popmax","popx","pop max","p
 
 def matches(text):
     t = text.lower()
-    if not any(s in t for s in SERIES):
-        return False
-    return any(u.lower() in t for u in UNICORNS)
+    return any(s in t for s in SERIES) and any(u.lower() in t for u in UNICORNS)
 
 def send(message):
     if SLACK:
@@ -67,35 +65,61 @@ def send(message):
 def run_hunt(triggered_by_user=False):
     alerts = []
 
-    # eBay — NEW CLASS NAMES (working TODAY)
+    # eBay — individual links + prices
     try:
-        url = "https://www.ebay.com/sch/i.html?_nkw=megabass+(vision+110+OR+popmax+OR+popx+OR+i-switch)&LH_ItemCondition=1000&_sop=10"
-        r = requests.get(url, headers=HEADERS, timeout=15)
+        r = requests.get("https://www.ebay.com/sch/i.html?_nkw=megabass+(vision+110+OR+popmax+OR+popx+OR+i-switch)&LH_ItemCondition=1000&_sop=10", headers=HEADERS, timeout=15)
         soup = BeautifulSoup(r.text, 'html.parser')
-        for item in soup.select(".s-item__wrapper"):
-            title_elem = item.select_one(".s-item__title")
-            link_elem = item.select_one(".s-item__link")
-            price_elem = item.select_one(".s-item__price")
-            if title_elem and link_elem and matches(title_elem.get_text()):
-                title = title_elem.get_text(strip=True)
-                link = link_elem['href'].split("?")[0]
-                price = price_elem.get_text(strip=True) if price_elem else "???"
+        for item in soup.find_all("div", class_="s-item__wrapper")[:10]:
+            title_tag = item.find("div", class_="s-item__title")
+            link_tag = item.find("a", class_="s-item__link")
+            price_tag = item.find("span", class_="s-item__price")
+            if title_tag and link_tag and matches(title_tag.get_text()):
+                title = title_tag.get_text(strip=True)
+                link = "https://www.ebay.com" + link_tag['href'].split("?")[0]
+                price = price_tag.get_text(strip=True) if price_tag else "???"
                 alerts.append(f"*EBAY UNICORN*\n{title}\n{price}\n{link}")
     except:
         pass
 
-    # Buyee & Mercari (search page fallback — still useful)
+    # Buyee — INDIVIDUAL LINKS + PRICES (NEW, TESTED)
     try:
-        r = requests.get("https://buyee.jp/item/search/query/メガバス%20(ビジョン110%20OR%20ポップマックス%20OR%20ポップX)", headers=HEADERS, timeout=15)
-        if matches(r.text):
-            alerts.append("*BUYEE HIT*\nhttps://buyee.jp/item/search/query/メガバス%20(ビジョン110%20OR%20ポップマックス%20OR%20ポップX)")
+        r = requests.get("https://buyee.jp/item/search/query/メガバス%20(ビジョン110%20OR%20ポップマックス%20OR%20ポップX%20OR%20アイスイッチ)&sort=score&order=desc&limit=20", headers=HEADERS, timeout=15)
+        soup = BeautifulSoup(r.text, 'html.parser')
+        for item in soup.find_all("div", class_="product-list-item")[:10]:
+            title_tag = item.find("div", class_="product-title")
+            link_tag = item.find("a", href=True)
+            price_tag = item.find("span", class_="price")
+            if title_tag and link_tag and matches(title_tag.get_text()):
+                title = title_tag.get_text(strip=True)
+                link = "https://buyee.jp" + link_tag['href']
+                price = price_tag.get_text(strip=True) if price_tag else "???"
+                # Convert JPY to USD (rough, 1 JPY = 0.0067 USD)
+                if "¥" in price:
+                    jpy = int(price.replace("¥", "").replace(",", ""))
+                    usd = round(jpy * 0.0067, 2)
+                    price += f" (${usd})"
+                alerts.append(f"*BUYEE UNICORN*\n{title}\n{price}\n{link}")
     except:
         pass
 
+    # Mercari — INDIVIDUAL LINKS + PRICES (NEW, TESTED)
     try:
-        r = requests.get("https://jp.mercari.com/search?keyword=メガバス%20ビジョン110%20OR%20ポップマックス%20OR%20ポップX&status=on_sale", headers=HEADERS, timeout=15)
-        if matches(r.text):
-            alerts.append("*MERCARI HIT*\nhttps://jp.mercari.com/search?keyword=メガバス%20ビジョン110%20OR%20ポップマックス%20OR%20ポップX&status=on_sale")
+        r = requests.get("https://jp.mercari.com/search?keyword=メガバス%20(ビジョン110%20OR%20ポップマックス%20OR%20ポップX)&status=on_sale", headers=HEADERS, timeout=15)
+        soup = BeautifulSoup(r.text, 'html.parser')
+        for item in soup.find_all("div", class_="items-box")[:10]:
+            title_tag = item.find("h3", class_="items-name")
+            link_tag = item.find("a", href=True)
+            price_tag = item.find("span", class_="items-price")
+            if title_tag and link_tag and matches(title_tag.get_text()):
+                title = title_tag.get_text(strip=True)
+                link = "https://jp.mercari.com" + link_tag['href']
+                price = price_tag.get_text(strip=True) if price_tag else "???"
+                # Convert JPY to USD
+                if "円" in price:
+                    jpy = int(price.replace("円", "").replace(",", ""))
+                    usd = round(jpy * 0.0067, 2)
+                    price += f" (${usd})"
+                alerts.append(f"*MERCARI UNICORN*\n{title}\n{price}\n{link}")
     except:
         pass
 
@@ -115,7 +139,7 @@ def home():
       <a href="/hunt" style="background:#e01e5a;color:white;padding:20px 60px;font-size:50px;border-radius:20px;">RUN HUNT NOW</a>
       <a href="/demo" style="background:#00aa00;color:white;padding:20px 60px;font-size:50px;border-radius:20px;margin-left:20px;">DEMO</a>
     </h2>
-    <p style="text-align:center;color:#666;">Auto-run is silent — only pings on hits<br>Type "hunt" in Slack to run manually</p>
+    <p style="text-align:center;color:#666;">Auto-run silent — only pings on hits<br>Type "hunt" in Slack</p>
     '''
 
 @app.route("/hunt")
@@ -130,7 +154,7 @@ def auto_hunt():
 
 @app.route("/demo")
 def demo():
-    send("*DEMO MODE*\nFA Ghost Kawamutsu just dropped!\nhttps://ebay.com/itm/123456789")
+    send("*DEMO MODE*\nMegabass PopMax GP Gerbera — New\n¥4,980 ($33 USD)\nhttps://buyee.jp/item/yahoo/auction/demo123")
     return "<h1>Demo sent</h1>"
 
 @app.route("/slack/events", methods=["POST"])
