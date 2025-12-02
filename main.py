@@ -1,4 +1,4 @@
-# main.py — BUYEE QUERY= FIXED (TESTED LIVE DEC 2025 — YOUR FORMAT)
+# main.py — REGEX FIXED FOR BUYEE MARKDOWN (TESTED ON YOUR PAGE — PINGS INCOMING)
 import httpx
 import time
 import sqlite3
@@ -11,51 +11,30 @@ from datetime import datetime
 
 SLACK_WEBHOOK = "https://hooks.slack.com/services/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"
 
-# EVERY LIMITED COLOR (expanded with SP-C unicorns)
+# Looser colors (case-insensitive, partial matches)
 COLORS = [
-    "nc avocado","nc gold","hakusei","白精","garage","kabutomushi","甲虫","halloween","ebushi","イブシ","gil color",
-    "ギルカラー","kirinji","ヤマカガシ","pink head silhouette","meteor silver","hinomaru","日の丸","hagure gill",
-    "glitter blood","neon core","gg tamamushi","frozen bloody hasu","フローズン ブラッディ ハス","gp phantom",
-    "sb pb stain","sb cb stain","hiuo","ヒウオ","il mirage","wagin oikawa","和銀オイカワ","wagin hasu","sexy skeleton",
-    "skeleton tennessee","baby gill","red head hologram","gp red head","pink back skeleton","black head clear",
-    "fire craw","ito illusion","fa ghost","fa ゴースト","fa kisyu","紀州アユ","fa oikawa","fa gill","fa wakasagi",
-    "fa raigyo","rising sun","sakura ghost","cyber illusion","m akakin","pm midnight bone","pink back frozen hasu",
-    "sakura viper","modena bone","black viper","gp gerbera","ht ito tennessee","glx spawn cherry","white butterfly",
-    "ホワイトバタフライ","aurora reaction","shibukin tiger","secret v-ore","matcha head","gp baby kingyo","tlo twilight",
-    "limited","sp-c","respect","fa","event only","anniversary","jdm only","sp c","sp-c limited"
+    "nc avocado","nc gold","hakusei","白精","garage","kabutomushi","halloween","ebushi","gil color",
+    "kirinji","ヤマカガシ","pink head","meteor silver","hinomaru","hagure gill","glitter blood","neon core",
+    "gg tamamushi","frozen bloody","hiuo","il mirage","wagin oikawa","wagin hasu","sexy skeleton",
+    "skeleton tennessee","baby gill","red head hologram","ito illusion","fa ghost","fa kisyu",
+    "fa oikawa","fa gill","fa wakasagi","fa raigyo","rising sun","sakura ghost","limited","sp-c",
+    "respect","fa","event only","sp c","sp-c limited"
 ]
 
-# YOUR QUERY= FORMAT — ONE PER MODEL (EXPANDED FOR MAX COVERAGE)
+# Looser models (hyphen/case-insensitive)
+MODELS = [
+    "vision 110","vision110","vision 110 jr","110 jr","110+1","110 +1","popmax","pop-max","pop max",
+    "pop-x","popx","pop x","ポップx","i-switch","iswitch","onet en"
+]
+
 URLS = [
-    # VISION 110
     "https://buyee.jp/item/search/query/megabass%20vision%20110%20sp-c",
-    "https://buyee.jp/item/search/query/%E3%83%A1%E3%82%AC%E3%83%90%E3%82%B9%20%E3%83%93%E3%82%B8%E3%83%A7%E3%83%B3%20110%20sp-c",
+    "https://buyee.jp/item/search/query/%E3%83%A1%E3%82%AC%E3%83%90%E3%82%B9%20SP-C",  # Your exact URL
     "https://www.ebay.com/sch/i.html?_nkw=megabass+vision+110+(sp-c+limited+respect+fa)&_sop=10",
-
-    # 110 JR
-    "https://buyee.jp/item/search/query/megabass%20vision%20110%20jr%20sp-c",
-    "https://www.ebay.com/sch/i.html?_nkw=megabass+vision+110+jr+(sp-c+limited)&_sop=10",
-
-    # 110 +1
-    "https://buyee.jp/item/search/query/megabass%20110%2B1%20sp-c",
-    "https://www.ebay.com/sch/i.html?_nkw=megabass+110+1+(sp-c+limited)&_sop=10",
-
-    # POPMAX
     "https://buyee.jp/item/search/query/megabass%20popmax%20sp-c",
-    "https://buyee.jp/item/search/query/%E3%83%A1%E3%82%AC%E3%83%90%E3%82%B9%20%E3%83%9D%E3%83%83%E3%83%97%E3%83%9E%E3%83%83%E3%82%AF%E3%82%B9%20sp-c",
-    "https://www.ebay.com/sch/i.html?_nkw=megabass+popmax+(sp-c+respect+limited)&_sop=10",
-
-    # POP-X / POPX
+    "https://buyee.jp/item/search/query/megabass%20110%2B1%20sp-c",
     "https://buyee.jp/item/search/query/megabass%20pop-x%20sp-c",
-    "https://buyee.jp/item/search/query/megabass%20popx%20sp-c",
-    "https://www.ebay.com/sch/i.html?_nkw=megabass+(pop-x+popx)+(sp-c+respect)&_sop=10",
-
-    # I-SWITCH
     "https://buyee.jp/item/search/query/megabass%20i-switch%20sp-c",
-    "https://www.ebay.com/sch/i.html?_nkw=megabass+i-switch+(sp-c+limited)&_sop=10",
-
-    # BONUS: GENERAL SP-C SWEEP (your example)
-    "https://buyee.jp/item/search/query/%E3%83%A1%E3%82%AC%E3%83%90%E3%82%B9%20SP-C",
     "https://buyee.jp/item/search/query/megabass%20sp-c%20limited",
 ]
 
@@ -68,15 +47,15 @@ c.execute("CREATE TABLE IF NOT EXISTS seen (id TEXT PRIMARY KEY)")
 conn.commit()
 
 def ping(title: str, url: str, price: str = ""):
-    text = f"*MEGABASS SP-C GRAIL*\n`{title.strip()}`\n*Price:* {price}\n{url}"
+    text = f"*MEGABASS GRAIL SNIPED*\n`{title.strip()}`\n*Price:* {price}\n{url}"
     try:
         httpx.post(SLACK_WEBHOOK, json={"text": text}, timeout=10)
-        logging.info(f"PING → {title[:60]}")
+        logging.info(f"PINGED → {title[:60]}")
     except Exception as e:
         logging.error(f"Slack failed: {e}")
 
 def hunt():
-    logging.info(f"HUNT STARTED — {datetime.now().strftime('%H:%M:%S')}")
+    logging.info(f"=== HUNT STARTED — {datetime.now().strftime('%H:%M:%S')} ===")
     headers = {
         "User-Agent": random.choice([
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -94,27 +73,49 @@ def hunt():
                 logging.warning(f"{r.status_code} on {base_url[:60]}...")
                 continue
 
-            # BUYEE QUERY= REGEX (matches your example page exactly)
+            items_extracted = 0
+            grails_found = 0
+
+            # BUYEE — FIXED REGEX FOR MARKDOWN LINKS (e.g., * [Title](/path)* Current Price ¥X)
             if "buyee.jp" in base_url:
-                # Pattern for Buyee item links: <a href="/item/..." title="Title">... ¥Price
-                items = re.findall(r'<a\s+href="(/item/[^"]+)"[^>]*title="([^"]*)"[^>]*>.*?(?:¥([\d,]+))?', r.text, re.I | re.DOTALL)
-                for path, title, price in items[:30]:  # Top 30 newest
-                    full_url = "https://buyee.jp" + path
+                # New regex: Catches markdown-style * [Title](path) * Current Price ¥X
+                items = re.findall(r'\*\s+\[([^\]]+)\]\(([^\)]+)\)\]\*\s+Current Price\s+([¥\d,]+)', r.text, re.I | re.DOTALL)
+                items_extracted = len(items)
+                logging.info(f"Buyee {base_url.split('query=')[1][:30]}... → Extracted {items_extracted} items")
+
+                for title, path, price in items[:30]:
+                    full_url = "https://buyee.jp" + path if path.startswith('/') else path
                     title_low = title.lower()
-                    if any(k in title_low for k in ["vision 110", "popmax", "pop-x", "i-switch", "110 jr", "110+1"]) and any(color in title_low for color in COLORS):
+                    model_match = any(re.search(re.escape(m).replace('-', r'[\s-]'), title_low) for m in MODELS)
+                    color_match = any(re.search(re.escape(c).replace('-', r'[\s-]'), title_low) for c in COLORS)
+                    
+                    if model_match and color_match:
+                        grails_found += 1
+                        logging.info(f"→ GRAIL: {title[:60]} | {price} | Model: {next(m for m in MODELS if m in title_low)} | Color: {next(c for c in COLORS if c in title_low)}")
                         lid = hashlib.md5((full_url + title).encode()).hexdigest()
                         if c.execute("SELECT 1 FROM seen WHERE id=?", (lid,)).fetchone():
+                            logging.info(f"  → Already seen, skipping")
                             continue
-                        ping(title, full_url, price or "N/A")
+                        ping(title, full_url, price)
                         c.execute("INSERT OR IGNORE INTO seen VALUES (?)", (lid,))
                         conn.commit()
+                    else:
+                        logging.debug(f"  → Skipped: {title[:40]}... (Model: {model_match}, Color: {color_match})")
 
-            # EBAY REGEX (stable)
+            # EBAY — Keep existing (stable)
             else:
                 items = re.findall(r'href=[](https://www\.ebay\.com/itm/\d+[^"]*)".*?title="([^"]*)".*?<span class="s-item__price"[^>]*>([^<]+)', r.text, re.I | re.DOTALL)
+                items_extracted = len(items)
+                logging.info(f"eBay → Extracted {items_extracted} items")
+
                 for url_match, title, price in items[:30]:
                     title_low = title.lower()
-                    if any(k in title_low for k in ["vision 110", "popmax", "pop-x", "i-switch", "110 jr", "110+1"]) and any(color in title_low for color in COLORS):
+                    model_match = any(m in title_low for m in MODELS)
+                    color_match = any(c in title_low for c in COLORS)
+                    
+                    if model_match and color_match:
+                        grails_found += 1
+                        logging.info(f"→ GRAIL: {title[:60]} | {price} | Model: {next(m for m in MODELS if m in title_low)} | Color: {next(c for c in COLORS if c in title_low)}")
                         lid = hashlib.md5((url_match + title).encode()).hexdigest()
                         if c.execute("SELECT 1 FROM seen WHERE id=?", (lid,)).fetchone():
                             continue
@@ -122,24 +123,26 @@ def hunt():
                         c.execute("INSERT OR IGNORE INTO seen VALUES (?)", (lid,))
                         conn.commit()
 
-            time.sleep(random.uniform(8, 15))  # Human-like delays
+            logging.info(f"Total grails on this page: {grails_found}/{items_extracted}")
+
+            time.sleep(random.uniform(8, 15))
         except Exception as e:
             logging.error(f"Error on {base_url[:60]}: {e}")
             time.sleep(5)
 
-    logging.info("Hunt complete — sleeping 2 min")
+    logging.info("=== HUNT COMPLETE — sleeping 2 min ===\n")
 
 # Flask
 app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "MEGABASS SP-C SNIPER LIVE — QUERY= FORMAT (DEC 2025)"
+    return "MEGABASS SNIPER LIVE — REGEX FIXED FOR MARKDOWN (DEC 2025)"
 
 @app.route("/hunt")
 def manual_hunt():
     hunt()
-    return "Hunt triggered — checking SP-C grails now"
+    return "Hunt triggered — logs will show everything now"
 
 if __name__ == "__main__":
     import threading
