@@ -1,113 +1,120 @@
-# main.py — VISION 110 LIMITED BOT (New Only) — Render Free Tier
+from flask import Flask, jsonify, request
 import requests
-import re
+from bs4 import BeautifulSoup
 import time
-import logging
-import threading
 import os
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
-from flask import Flask, jsonify
-from typing import Set, Tuple
+from datetime import datetime
+import re
 
-# ==================== BOT IDENTITY ====================
-BOT_NAME = "VISION 110 LIMITED BOT"
-CHECK_INTERVAL_MINUTES = 4  # Fastest bot — scans every 4 minutes
-
-# ==================== ULTIMATE NEW-ONLY URL ====================
-URLS = [
-    "https://buyee.jp/item/search?query=megabass+vision+110+limited+OR+respect&translationType=98&sort=end&order=d&itemConditionId=1&brandId=100000022&rootCategoryId=26341&listingType=auction"
-]
-
-# ==================== ALL RARE COLORS ====================
-KEY_PHRASES = [
-    "Black Viper","Candy","Crystal Lime Frog","Cuba Libre","Cyber Illusion","Dorado","FA Ghost Wakasagi","FA Gill",
-    "FA Shirauo","FA Wakasagi","Frozen Hasu","Frozen Tequila","Full Blue","Full Mekki","Genroku","GG Biwahigai",
-    "GG Hasu","GG Jekyll & Hyde","GG Megabass Kinkuro","GG Mid Night Bone","GG Moss Ore","GG Oikawa","GP Ayu",
-    "GP Phantom","GP Tanagon","Hakusei Muddy","HT Hakone Wakasagi","HT Kossori","Hiuo","IL Mirage","Karakusa Tiger",
-    "Killer Kawaguchi","M Aka Kin","M Cosmic Shad","M Endmax","M Golden Lime","Megabass Shrimp","MG Vegetation Reactor",
-    "Modena Bone","Morning Dawn","Nanko Reaction","Northern Secret","PM Midnight Bone","PM Threadfin Shad",
-    "Redeyed Glass Shrimp","Rising Sun","Sakura Ghost","Sakura Viper","SB CB Stain Reaction","SB OB Shad",
-    "SB PB Stain Reaction","Sexy Ayu","SG Hot Shad","SG Kasumi Reaction","Spawn Killer","Stealth Wakasagi",
-    "TLC","Triple Illusion","Wagin Hasu","GLX Rainbow","Gori Copper","GG Perch OB","IL Red Head",
-    "HT ITO Tennessee Shad","Matcha Head","GG Alien Gold","GP Kikyo","GP Pro Blue","Blue Back Chart Candy",
-    "GG Chartreuse Back Bass","GG Shad","Burst Sand Snake","CMF","GLX Secret Flasher","Impact White",
-    "SP Sunset Tequila","GP Tequila Shad","White Butterfly","TLO","GP Gerbera","SK","Shibukin Tiger",
-    "Elegy Bone","Threadfin Shad","Wakasagi Glass","Mystic Gill","French Pearl","Ozark Shad"
-]
-
-# ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
-SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/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"
-# ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
-
-# ==================== SETUP ====================
-logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", datefmt="%H:%M:%S")
-log = logging.getLogger(__name__)
-
-session = requests.Session()
-session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
-retry = Retry(total=4, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504])
-session.mount("https://", HTTPAdapter(max_retries=retry))
-
-seen: Set[Tuple[str, Tuple[str, ...]]] = set()
-
-# ==================== SLACK STARTUP MESSAGE ====================
-def slack_startup():
-    if "YOUR_REAL" in SLACK_WEBHOOK_URL or not SLACK_WEBHOOK_URL:
-        log.info("Startup message skipped (webhook not set)")
-        return
-    payload = {
-        "text": f"*{BOT_NAME}* is LIVE and protecting the nest :fishing_pole_and_fish:\nScanning brand-new Limited/Respect listings every {CHECK_INTERVAL_MINUTES} minutes",
-        "icon_emoji": ":megabass:"
-    }
-    try:
-        requests.post(SLACK_WEBHOOK_URL, json=payload, timeout=10)
-        log.info("Startup message sent to Slack")
-    except:
-        log.error("Startup message failed")
-
-# ==================== CORE SCAN ====================
-def scan():
-    log.info(f"{BOT_NAME} → Scanning for new Limited/Respect unicorns...")
-    for url in URLS:
-        try:
-            html = session.get(url, timeout=20).text
-            found = {p for p in KEY_PHRASES if re.search(rf"(?<!\w){re.escape(p.lower())}(?!\w)", html.lower())}
-            if found:
-                key = (url, tuple(sorted(found)))
-                if key not in seen:
-                    seen.add(key)
-                    payload = {
-                        "text": f"*{BOT_NAME}*\nJACKPOT! NEW SEALED!\n• {'\n• '.join(found)}\n\n<{url}|View on Buyee>",
-                        "icon_emoji": ":crown:"
-                    }
-                    requests.post(SLACK_WEBHOOK_URL, json=payload, timeout=10)
-                    log.info(f"JACKPOT → {' | '.join(found)}")
-        except Exception as e:
-            log.error(f"Scan error: {e}")
-        time.sleep(1.5)  # Keeps Render free tier happy forever
-
-# ==================== RENDER WEB SERVER ====================
 app = Flask(__name__)
 
-@app.route("/")
+# === PUT YOUR SLACK WEBHOOK HERE IN RENDER ENV VARS ===
+SLACK_WEBHOOK = os.getenv("SLACK_WEBHOOK")  # Set this in Render → Environment
+
+# List of exact colors we're hunting (add/remove as needed)
+TARGET_COLORS = [
+    "SK", "FA Ghost", "Tamamushi", "Shibukin Candy", "GG Deadly",
+    "Kitsune", "Respect", "Limited", "Vision 110 Limited", "Oneten Limited"
+]
+
+# Track already-seen auctions so we don't spam
+seen_auctions = set()
+
+def send_to_slack(message):
+    if not SLACK_WEBHOOK:
+        print("SLACK_WEBHOOK not set! Go to Render > Environment and add it.")
+        return
+    payload = {"text": message}
+    try:
+        requests.post(SLACK_WEBHOOK, json=payload, timeout=10)
+        print(f"Slack message sent: {message[:50]}...")
+    except Exception as e:
+        print(f"Slack failed: {e}")
+
+def clean_price(price_text):
+    price = re.sub(r"[^\d]", "", price_text)
+    return int(price) if price else 999999
+
+def scan_for_unicorns():
+    print(f"{datetime.now().strftime('%H:%M:%S')} | Starting unicorn hunt...")
+    
+    url = "https://auctions.yahoo.co.jp/search/search?auccat=&tab_ex=commerce&ei=utf-8&aq=-1&oq=&sc_i=&fr=auc_top&p=megabass+vision+110+limited"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+    
+    try:
+        r = requests.get(url, headers=headers, timeout=20)
+        soup = BeautifulSoup(r.text, 'html.parser')
+        
+        listings = soup.find_all("li", class_="Product")
+        
+        for item in listings:
+            try:
+                title_elem = item.find("h3", class_="Product__title")
+                price_elem = item.find("span", class_="Product__priceValue")
+                link_elem = item.find("a", class_="Product__titleLink")
+                
+                if not all([title_elem, price_elem, link_elem]):
+                    continue
+                    
+                title = title_elem.get_text(strip=True)
+                price_text = price_elem.get_text(strip=True)
+                link = link_elem.get("href")
+                auction_id = link.split("/")[-1]
+                
+                price = clean_price(price_text)
+                
+                # Check if it's a unicorn
+                for color in TARGET_COLORS:
+                    if color.lower() in title.lower():
+                        # New listing!
+                        if auction_id not in seen_auctions:
+                            seen_auctions.add(auction_id)
+                            
+                            usd = round(price * 0.0066, 2)  # rough JPY → USD
+                            
+                            alert = (
+                                f"🦄 *JACKPOT → {color.upper()}* 🦄\n\n"
+                                f"*{title}*\n\n"
+                                f"💰 Price: ¥{price:,} (≈ ${usd})\n"
+                                f"🔗 {link}\n"
+                                f"⏰ Found: {datetime.now().strftime('%b %d, %Y %H:%M JST')}"
+                            )
+                            
+                            send_to_slack(alert)
+                            print(f"JACKPOT → {color} | ¥{price:,}")
+                            
+            except Exception as e:
+                continue
+                
+    except Exception as e:
+        print(f"Scrape failed: {e}")
+
+# HOME PAGE
+@app.route('/')
 def home():
+    return "<pre>🦊 VISION 110 LIMITED BOT IS ALIVE<br>Hunting unicorns 24/7<br><br>UptimeRobot → /ping-me-daddy<br>Real scan → /scan</pre>"
+
+# UPTIMEROBOT SPECIAL URL — KEEPS RENDER WARM FOREVER
+@app.route('/ping-me-daddy')
+def ping():
     return jsonify({
-        "bot": BOT_NAME,
-        "status": "guarding the nest",
-        "interval_min": CHECK_INTERVAL_MINUTES,
-        "hits_seen": len(seen)
-    })
+        "status": "OK 🦊",
+        "message": "Render is warm — unicorn hunter ready",
+        "time": datetime.now().strftime("%H:%M:%S")
+    }), 200
 
-def scanner_loop():
-    scan()
-    while True:
-        time.sleep(CHECK_INTERVAL_MINUTES * 60)
-        scan()
+# THIS IS THE REAL SCAN (call this every 10-15 mins with cron)
+@app.route('/scan')
+def trigger_scan():
+    print(f"{datetime.now().strftime('%H:%M:%S')} | VISION 110 LIMITED BOT → Scanning for new Limited/Respect unicorns...")
+    scan_for_unicorns()
+    return "Scan complete — check Slack for unicorns 🦄"
 
+# STARTUP MESSAGE
 if __name__ == "__main__":
-    log.info(f"{BOT_NAME} STARTED — protecting retirement 24/7")
-    slack_startup()                                      # ← Pings Slack immediately
-    threading.Thread(target=scanner_loop, daemon=True).start()
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    send_to_slack("*VISION 110 LIMITED BOT STARTED — protecting retirement 24/7* 🦊💸")
+    print("VISION 110 LIMITED BOT STARTED — protecting retirement 24/7")
+    app.run(host='0.0.0.0', port=10000)
