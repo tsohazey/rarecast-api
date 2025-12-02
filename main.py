@@ -23,7 +23,7 @@ URLS = [
 KEY_PHRASES = ["Black Viper","Candy","Crystal Lime Frog","Cuba Libre","Cyber Illusion","Dorado","FA Ghost Wakasagi","FA Gill","FA Shirauo","FA Wakasagi","Frozen Hasu","Frozen Tequila","Full Blue","Full Mekki","Genroku","GG Biwahigai","GG Hasu","GG Jekyll & Hyde","GG Megabass Kinkuro","GG Mid Night Bone","GG Moss Ore","GG Oikawa","GP Ayu","GP Phantom","GP Tanagon","Hakusei Muddy","HT Hakone Wakasagi","HT Kossori","Hiuo","IL Mirage","Karakusa Tiger","Killer Kawaguchi","M Aka Kin","M Cosmic Shad","M Endmax","M Golden Lime","Megabass Shrimp","MG Vegetation Reactor","Modena Bone","Morning Dawn","Nanko Reaction","Northern Secret","PM Midnight Bone","PM Threadfin Shad","Redeyed Glass Shrimp","Rising Sun","Sakura Ghost","Sakura Viper","SB CB Stain Reaction","SB OB Shad","SB PB Stain Reaction","Sexy Ayu","SG Hot Shad","SG Kasumi Reaction","Spawn Killer","Stealth Wakasagi","TLC","Triple Illusion","Wagin Hasu","GLX Rainbow","Gori Copper","GG Perch OB","IL Red Head","HT ITO Tennessee Shad","Matcha Head","GG Alien Gold","GP Kikyo","GP Pro Blue","Blue Back Chart Candy","GG Chartreuse Back Bass","GG Shad","Burst Sand Snake","CMF","GLX Secret Flasher","Impact White","SP Sunset Tequila","GP Tequila Shad","White Butterfly","TLO","GP Gerbera","SK","Shibukin Tiger","Elegy Bone","Threadfin Shad","Wakasagi Glass","Mystic Gill","French Pearl","Ozark Shad"]
 
 # ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
-SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/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"
+SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/PUT_YOUR_NEW_WEBHOOK_HERE"
 # ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
 
 # ==================== SETUP ====================
@@ -48,15 +48,22 @@ def scan():
                 key = (url, tuple(sorted(found)))
                 if key not in seen:
                     seen.add(key)
-                    payload = {"text": f"*{BOT_NAME}*\nJACKPOT!\n• {'\n• '.join(found)}\n\n<{url}|View on Buyee>", "icon_emoji": ":crown:"}
+                    payload = {
+                        "text": f"*{BOT_NAME}*\nJACKPOT!\n• {'\n• '.join(found)}\n\n<{url}|View on Buyee>",
+                        "icon_emoji": ":crown:"
+                    }
                     requests.post(SLACK_WEBHOOK_URL, json=payload, timeout=10)
                     log.info(f"HIT → {', '.join(found)}")
-        except: pass
-        time.sleep(1.5)   # Keeps Render free tier happy
+        except Exception as e:
+            log.error(f"Error on {url}: {e}")
+        time.sleep(1.5)
 
-# ==================== RENDER WRAPPER ====================
+# ==================== RENDER WRAPPER (FIXED) ====================
 app = Flask(__name__)
-@app.route("/"); def home(): return jsonify({"bot": BOT_NAME, "status": "alive", "urls": len(URLS)})
+
+@app.route("/")
+def home():
+    return jsonify({"bot": BOT_NAME, "status": "alive", "urls": len(URLS), "hits_seen": len(seen)})
 
 def run_scanner():
     scan()
