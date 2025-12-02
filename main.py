@@ -13,90 +13,100 @@ import gspread
 
 app = Flask(__name__)
 
-# ENV VARS
-SLACK_WEBHOOK = os.getenv("SLACK_WEBHOOK")
+# === ENV VARS (must exist in Render) ===
+SLACK_WEBHOOK   = os.getenv("SLACK_WEBHOOK")
 TROPHY_PASSWORD = os.getenv("TROPHY_PASSWORD")
-GOOGLE_JSON = os.getenv("GOOGLE_SHEETS_JSON")
+GOOGLE_JSON     = os.getenv("GOOGLE_SHEETS_JSON")
 
 # === GOOGLE SHEETS — ONLY WRITES TO "HUNTING LOG" TAB ===
 sheet = None
 if GOOGLE_JSON:
     try:
         creds_dict = json.loads(GOOGLE_JSON)
-        creds = Credentials.from_service_account_info(creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets"])
+        creds = Credentials.from_service_account_info(
+            creds_dict,
+            scopes=["https://www.googleapis.com/auth/spreadsheets"]
+        )
         gc = gspread.authorize(creds)
-        # ←←← REPLACE WITH YOUR REAL SHEET URL ↓↓↓
-        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1ZYMqvxx_djiKQwFfxb8rGC-320jv9bWJxuZEWoJdAx4/edit")
-        sheet = sh.worksheet("HUNTING LOG")   # ← BOT ONLY TOUCHES THIS TAB
-        print("Google Sheets connected → HUNTING LOG tab")
+        # <<< REPLACE THIS LINE WITH YOUR EXACT SHEET URL >>>
+        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1YOUR_REAL_SHEET_ID_HERE/edit")
+        sheet = sh.worksheet("HUNTING LOG")
+        print("Google Sheets → HUNTING LOG tab connected")
     except Exception as e:
-        print(f"Sheets failed: {e}")
+        print(f"Sheets connection failed: {e}")
 else:
-    print("No GOOGLE_SHEETS_JSON")
+    print("GOOGLE_SHEETS_JSON missing")
 
-TARGET_COLORS = ["SK","FA Ghost","Tamamushi","Shibukin Candy","GG Deadly","Kitsune","Respect","Limited","Vision 110 Limited","Oneten Limited"]
+TARGET_COLORS = ["SK","FA Ghost","Tamamushi","Shibukin Candy","GG Deadly",
+                 "Kitsune","Respect","Limited","Vision 110 Limited","Oneten Limited"]
 PRICE_CEILING = 18000
 
 seen_auctions = set()
 recent_jackpots = []
 
 def send_to_slack(message):
-    if not SLACK_WEBHOOK: return
+    if not SLACK_WEBHOOK: 
+        print("SLACK_WEBHOOK missing")
+        return
     try:
         requests.post(SLACK_WEBHOOK, json={"text": message}, timeout=10)
         print("Slack sent")
-    except: print("Slack failed")
+    except Exception as e:
+        print(f"Slack error: {e}")
 
 def log_to_sheet(row):
-    global sheet
     if sheet:
         try:
             sheet.append_row(row)
-            print("Logged to HUNTING LOG tab")
+            print("Row added to HUNTING LOG")
         except Exception as e:
-            print(f"Sheet error: {e}")
+            print(f"Sheet append failed: {e}")
 
-def clean_price(t): return int(re.sub(r"[^\d]","",t)) if t else 999999
+def clean_price(t):
+    return int(re.sub(r"[^\d]", "", t)) if t else 999999
 
 def scan_for_unicorns():
-    print(f"{datetime.now().strftime('%H:%M:%S')} | Hunt started")
+    print(f"{datetime.now():%H:%M:%S} | Hunt started")
     url = "https://auctions.yahoo.co.jp/search/search?auccat=&tab_ex=commerce&ei=utf-8&aq=-1&oq=&sc_i=&fr=auc_top&p=megabass+vision+110+limited"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"}
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
     try:
         r = requests.get(url, headers=headers, timeout=25)
         r.raise_for_status()
-        soup = BeautifulSoup(r.text, 'html.parser')
+        soup = BeautifulSoup(r.text, "html.parser")
         for item in soup.find_all("li", class_="Product"):
             try:
-                title_elem = item.find("h3", class_="Product__title")
-                price_elem = item.find("span", class_="Product__priceValue")
-                link_elem = item.find("a", class_="Product__titleLink")
-                if not all([title_elem, price_elem, link_elem]): continue
-                    
-                title = title_elem.get_text(strip=True)
-                price_text = price_elem.get_text(strip=True)
-                link = link_elem["href"]
+                title = item.find("h3", class_="Product__title").get_text(strip=True)
+                price_text = item.find("span", class_="Product__priceValue").get_text(strip=True)
+                link = item.find("a", class_="Product__titleLink")["href"]
                 auction_id = link.split("/")[-1]
                 price = clean_price(price_text)
                 usd = round(price * 0.0066, 2)
 
                 for color in TARGET_COLORS:
-                    if color.upper() in title.upper() and auction_id not in seen_auctions and price <= PRICE_CEILING:
+                    if (color.upper() in title.upper() 
+                        and auction_id not in seen_auctions 
+                        and price <= PRICE_CEILING):
                         seen_auctions.add(auction_id)
-                        
+
                         alert = f"🦄 *JACKPOT → {color.upper()}* ¥{price:,} (~${usd})\n{title}\n{link}"
                         send_to_slack(alert)
                         print(f"JACKPOT → {color} ¥{price:,}")
 
-                        # Save to vault
-                        recent_jackpots.append({"color":color.upper(),"title":title,"price":f"¥{price:,}","time":datetime.now().strftime("%H:%M"),"link":link})
-                        if len(recent_jackpots)>10: recent_jackpots.pop(0)
+                        recent_jackpots.append({
+                            "color": color.upper(),
+                            "title": title,
+                            "price": f"¥{price:,}",
+                            "time": datetime.now().strftime("%H:%M"),
+                            "link": link
+                        })
+                        if len(recent_jackpots) > 10: recent_jackpots.pop(0)
 
-                        # Log to HUNTING LOG tab only
                         log_to_sheet([color.upper(), title, price, usd, link, datetime.now().strftime("%Y-%m-%d %H:%M"), "NEW"])
             except: continue
-    except: send_to_slack("*Yahoo blocked — retrying soon*")
+    except Exception as e:
+        send_to_slack("*Yahoo blocked — retrying in 12 min*")
+        print(f"Scan failed: {e}")
 
 def auto_scan_loop():
     while True:
@@ -108,15 +118,15 @@ def home():
     if request.args.get('pwd') == TROPHY_PASSWORD:
         recent = ""
         for j in recent_jackpots:
-            short = j['title'][:100]+"..." if len(j['title'])>100 else j['title']
+            short = j['title'][:100] + "..." if len(j['title']) > 100 else j['title']
             recent += f"<br>🦄 <b>{j['color']}</b> {j['price']} @ {j['time']}<br>  <a href='{j['link']}' target='_blank' style='color:lime'>→ {short}</a>"
-        return f"<pre style='background:#000;color:#0f0;font-size:18px;padding:20px;line-height:1.8;'>KITSUNE VAULT LIVE\n{recent or 'waiting for blood...'}</pre>"
+        return f"<pre style='background:#000;color:#0f0;font-size:18px;padding:20px;line-height:1.8;'>KITSUNE VAULT LIVE\n{recent or 'waiting...'}</pre>"
     return "<pre style='font-size:22px;color:#333'>🦊 nothing here</pre>"
 
 @app.route('/ping-me-daddy')
 def ping(): return jsonify({"status":"OK 🦊"}), 200
 
 if __name__ == "__main__":
-    send_to_slack("*KITSUNE SNIPER FINAL FORM — HUNTING LOG tab active, inventory safe forever* 🦊🔒")
+    send_to_slack("*KITSUNE SNIPER 100% FINAL — retirement-grade, no more surprises*")
     threading.Thread(target=auto_scan_loop, daemon=True).start()
     app.run(host='0.0.0.0', port=10000)
