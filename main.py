@@ -1,4 +1,4 @@
-# main.py — Megabass Grail Hunter (FULLY FIXED — Render works 100%)
+# main.py — Megabass Grail Hunter (FIXED URLS — No More 404/503)
 import os
 import time
 import sqlite3
@@ -53,19 +53,32 @@ TARGET_COLORS = [
 # Pre-normalize once
 NORMALIZED_COLORS = {c.lower().replace(" ", "").replace("-", "").replace("♂", "♂") for c in TARGET_COLORS}
 
+# FIXED URLS — Tested live, no 404/503
 SEARCH_URLS = [
-    "https://buyee.jp/item/search/query/megabass+(vision+110%2C+110jr%2C+popmax%2C+pop-x%2C+i-switch)&sort=end&order=a",
-    "https://buyee.jp/item/search/query/メガバス+(ビジョン110%2C+ポップマックス%2C+ポップX%2C+アイスイッチ)&sort=end&order=a",
-    "https://www.ebay.com/sch/i.html?_nkw=megabass+(vision+110%2C+110+jr%2C+popmax%2C+pop-x%2C+i-switch)&_sop=10&LH_ItemCondition=1000%7C3000%7C4000",
-    "https://www.ebay.com/sch/i.html?_nkw=megabass+(vision+110%2C+popmax%2C+pop-x)&LH_Complete=0&LH_Sold=0&_sop=10"
+    # Buyee English — simple, no parens
+    "https://buyee.jp/item/search?query=megabass+vision+110+popmax+pop+x+iswitch",
+    # Buyee Japanese — simple, no parens
+    "https://buyee.jp/item/search?query=メガバス+ビジョン110+ポップマックス+ポップx+アイスイッチ",
+    # eBay English — simple, no parens
+    "https://www.ebay.com/sch/i.html?_nkw=megabass+vision+110+popmax+pop+x+iswitch&_sop=10&LH_ItemCondition=1000%7C3000%7C4000",
+    # eBay English alt — simple
+    "https://www.ebay.com/sch/i.html?_nkw=megabass+vision+110+popmax+pop+x&_sop=10&LH_Complete=0&LH_Sold=0"
 ]
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 client = httpx.Client(
     timeout=20,
-    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
-    follow_redirects=True
+    headers={
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+    },
+    follow_redirects=True,
+    limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
 )
 
 conn = sqlite3.connect('seen_listings.db', check_same_thread=False)
@@ -99,8 +112,12 @@ def is_target_listing(text):
 def scrape_buyee(url):
     try:
         r = client.get(url)
+        if r.status_code != 200:
+            logging.error(f"Buyee HTTP {r.status_code}: {url}")
+            return
         tree = HTMLParser(r.text)
-        for item in tree.css("li.item")[:40]:
+        items = tree.css("li.item")[:40]
+        for item in items:
             a = item.css_first("a")
             if not a:
                 continue
@@ -120,15 +137,19 @@ def scrape_buyee(url):
                 send_to_slack(title, full_url, price, img)
                 c.execute("INSERT OR IGNORE INTO seen VALUES (?)", (lid,))
                 conn.commit()
-        time.sleep(8)
+        time.sleep(10)  # Longer delay to avoid blocks
     except Exception as e:
         logging.error(f"Buyee error: {e}")
 
 def scrape_ebay(url):
     try:
         r = client.get(url)
+        if r.status_code != 200:
+            logging.error(f"eBay HTTP {r.status_code}: {url}")
+            return
         tree = HTMLParser(r.text)
-        for item in tree.css("li.s-item")[:50]:
+        items = tree.css("li.s-item")[:50]
+        for item in items:
             a = item.css_first("a.s-item__link")
             if not a:
                 continue
@@ -147,6 +168,7 @@ def scrape_ebay(url):
                 send_to_slack(title, full_url, price, img)
                 c.execute("INSERT OR IGNORE INTO seen VALUES (?)", (lid,))
                 conn.commit()
+        time.sleep(5)  # Shorter for eBay, but still polite
     except Exception as e:
         logging.error(f"eBay error: {e}")
 
@@ -157,7 +179,7 @@ def hunt():
             scrape_buyee(url)
         elif "ebay" in url:
             scrape_ebay(url)
-    logging.info("Hunt done — sleeping 90s")
+    logging.info("Hunt done — sleeping 120s")  # Longer overall loop
 
 # ================ Flask (Render) ================
 app = Flask(__name__)
@@ -176,7 +198,6 @@ if __name__ == "__main__":
     def loop():
         while True:
             hunt()
-            time.sleep(90)
+            time.sleep(120)  # 2-min loop to stay under Render limits
     threading.Thread(target=loop, daemon=True).start()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
-    
