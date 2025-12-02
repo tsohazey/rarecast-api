@@ -1,4 +1,5 @@
-flask
 requests
+requests-html
 beautifulsoup4
-gunicorn
+lxml-html-clean
+sqlite3
