@@ -10,9 +10,14 @@ import threading
 
 app = Flask(__name__)
 
+# === ENV VARS ONLY — NEVER IN CODE ===
 SLACK_WEBHOOK = os.getenv("SLACK_WEBHOOK")
-# ← PASSWORD IS NOW ONLY IN RENDER ENVIRONMENT, NOT IN CODE
-SECRET_PASSWORD = os.getenv("TROPHY_PASSWORD")  # YOU WILL SET THIS IN RENDER DASHBOARD
+TROPHY_PASSWORD = os.getenv("TROPHY_PASSWORD")   # ← your secret password
+
+if not SLACK_WEBHOOK:
+    print("⚠️⚠️ SLACK_WEBHOOK IS MISSING — GO TO RENDER > ENVIRONMENT AND ADD IT!!!")
+if not TROPHY_PASSWORD:
+    print("⚠️ No TROPHY_PASSWORD set — vault will be invisible until you add one")
 
 TARGET_COLORS = [
     "SK", "FA Ghost", "Tamamushi", "Shibukin Candy", "GG Deadly",
@@ -20,18 +25,21 @@ TARGET_COLORS = [
 ]
 
 seen_auctions = set()
-recent_jackpots = []
+recent_jackpots = []   # ← now stores link too
 
 def send_to_slack(message):
     if not SLACK_WEBHOOK:
-        print("SLACK_WEBHOOK missing!")
+        print("SLACK SKIPPED — webhook not set in Render env!")
         return
     payload = {"text": message}
     try:
-        requests.post(SLACK_WEBHOOK, json=payload, timeout=10)
-        print(f"Slack sent: {message[:60]}...")
-    except:
-        print("Slack failed")
+        resp = requests.post(SLACK_WEBHOOK, json=payload, timeout=10)
+        if resp.status_code == 200:
+            print("✅ Slack message sent!")
+        else:
+            print(f"Slack failed — status {resp.status_code}: {resp.text}")
+    except Exception as e:
+        print(f"Slack crashed: {e}")
 
 def clean_price(price_text):
     price = re.sub(r"[^\d]", "", price_text)
@@ -43,9 +51,7 @@ def scan_for_unicorns():
     
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Accept-Encoding": "gzip, deflate, br",
     }
     
     try:
@@ -53,7 +59,7 @@ def scan_for_unicorns():
         r.raise_for_status()
         soup = BeautifulSoup(r.text, 'html.parser')
         listings = soup.find_all("li", class_="Product")
-        print(f"Found {len(listings)} listings")
+        print(f"Found {len(listings)} listings — checking...")
 
         for item in listings:
             try:
@@ -73,26 +79,27 @@ def scan_for_unicorns():
                     if color.upper() in title.upper() and auction_id not in seen_auctions:
                         seen_auctions.add(auction_id)
                         
-                        # Slack alert
+                        # SLACK ALERT
                         alert = f"🦄 *JACKPOT → {color.upper()}* 🦄\n\n*{title}*\n\n💰 ¥{price:,} (≈ ${usd})\n🔗 {link}\n⏰ {datetime.now().strftime('%b %d %H:%M JST')}"
                         send_to_slack(alert)
                         print(f"JACKPOT → {color} | ¥{price:,}")
 
-                        # Save to trophy wall
+                        # SAVE TO VAULT WITH LINK
                         recent_jackpots.append({
                             "color": color.upper(),
                             "title": title,
                             "price": f"¥{price:,}",
-                            "time": datetime.now().strftime("%H:%M JST")
+                            "time": datetime.now().strftime("%H:%M JST"),
+                            "link": link
                         })
                         if len(recent_jackpots) > 10:
                             recent_jackpots.pop(0)
             except: continue
                 
-    except (Timeout, RequestException):
+    except (Timeout, RequestException) as e:
         send_to_slack("*Yahoo blocked — retrying in 12 min* ⏳")
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Scan error: {e}")
 
 def auto_scan_loop():
     while True:
@@ -104,24 +111,26 @@ def auto_scan_loop():
 def home():
     pwd = request.args.get('pwd') or request.args.get('password')
     
-    if pwd == SECRET_PASSWORD and SECRET_PASSWORD:
-        # ONLY YOU WITH CORRECT PASSWORD
+    if pwd == TROPHY_PASSWORD and TROPHY_PASSWORD:
         if not recent_jackpots:
-            recent = "<br>→ No unicorns sniped yet… waiting 🦊"
+            recent = "<br>→ No unicorns yet… waiting for blood 🦊"
         else:
             recent = ""
             for j in recent_jackpots:
-                recent += f"<br>🦄 <b>{j['color']}</b> → {j['price']} @ {j['time']}<br>  {j['title'][:100]}..."
+                short_title = j['title'][:100] + "..." if len(j['title']) > 100 else j['title']
+                recent += f"<br>🦄 <b>{j['color']}</b> → {j['price']} @ {j['time']}<br>  <a href='{j['link']}' target='_blank' style='color:lime;'>→ {short_title}</a>"
         
         return f"""
-        <pre style="font-size:18px; background:#000; color:#0f0; padding:20px;">
+        <pre style="font-size:18px; background:#000; color:#0f0; padding:20px; line-height:1.8;">
 ╔══════════════════════════════════════════════════╗
-║     <b>VISION 110 LIMITED SNIPER — PRIVATE VAULT</b>     ║
+║      <b>VISION 110 LIMITED SNIPER — PRIVATE VAULT</b>      ║
 ╚══════════════════════════════════════════════════╝
-Status: ● ONLINE | Scans every 12 min | Free tier immortal
+Status: ● ONLINE | Auto-scan every 12 min
 
-<b>LAST 10 JACKPOTS (you only):</b>
+<b>LAST 10 JACKPOTS (click title = direct auction):</b>
 {recent}
+
+<a href="{request.url}?pwd={pwd}" style="color:#666; font-size:12px;">[refresh]</a>
         </pre>
         """
     else:
@@ -134,9 +143,9 @@ def ping():
 @app.route('/scan')
 def manual_scan():
     threading.Thread(target=scan_for_unicorns).start()
-    return "Manual scan started"
+    return "Manual scan started!"
 
 if __name__ == "__main__":
-    send_to_slack("*VISION 110 LIMITED BOT FINAL FORM — password vault active* 🦊🔒💀")
+    send_to_slack("VISION 110 BOT FINAL FINAL — clickable vault + loud Slack debug active 🦊🔥💀")
     threading.Thread(target=auto_scan_loop, daemon=True).start()
     app.run(host='0.0.0.0', port=10000)
