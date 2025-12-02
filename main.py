@@ -42,7 +42,7 @@ KEY_PHRASES = [
 ]
 
 # ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
-SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/PUT_YOUR_NEW_WEBHOOK_HERE"
+SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/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"
 # ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
 
 # ==================== SETUP ====================
