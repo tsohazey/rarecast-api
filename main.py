@@ -1,110 +1,153 @@
-# main.py — MEGABASS GRAIL SNIPER v3.2 — FINAL WORKING DEC 2025
-import httpx, time, sqlite3, hashlib, logging, random, re, threading
-from flask import Flask
+# main.py
+# Buyee.jp Vision 110 Limited / Respect Series Color Scanner → Slack Alerts
+# Just add your Slack webhook, run it, and it will hunt 24/7
 
-SLACK_WEBHOOK = "https://hooks.slack.com/services/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"
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+import logging
+import re
+import time
+from typing import Set, List, Tuple
 
-GRAIL_KEYWORDS = [
-    "sp-c","limited","限定","福袋","干支","蛇","kinkuro","キンクロ",
-    "wagin hasu","ワギンハス","gpx","ghost","ゴースト","hakusei","白正",
-    "avocado","アボカド","hiuo","ヒウオ","fa ","respect","mat shad",
-    "gg deadly","vision 110","110+1","110 jr","+1 jr","jr.","popmax",
-    "popx","pop-x","i-slide","destroyer","orochi","concept f"
-]
+# ==================== CONFIGURATION ====================
 
 URLS = [
-    "https://buyee.jp/item/search/query/メガバス?sort=created&order=d&item_status=1&translationType=98",
-    "https://buyee.jp/item/search/query/megabass?sort=created&order=d&item_status=1&translationType=98",
-    "https://buyee.jp/item/search/query/メガバス+limited?sort=created&order=d&item_status=1&translationType=98",
-    "https://buyee.jp/item/search/query/vision+110?sort=created&order=d&item_status=1&translationType=98",
-    "https://buyee.jp/item/search/query/popmax?sort=created&order=d&item_status=1&translationType=98",
-    "https://buyee.jp/item/search/query/i-slide?sort=created&order=d&item_status=1&translationType=98",
-    "https://buyee.jp/item/search/query/メガバス?sort=end&order=d&item_status=1&translationType=98",
-    "https://buyee.jp/mercari/search?keyword=メガバス+limited&sort=created&order=desc",
-    "https://buyee.jp/mercari/search?keyword=megabass+sp-c",
-    "https://buyee.jp/mercari/search?keyword=ビジョン110+限定",
+    "https://buyee.jp/item/search/query/vision%20sp-c?sort=end&order=d&translationType=98&page=1",
+    "https://buyee.jp/item/search/query/vision%20sp-c?sort=end&order=d&translationType=98&page=2",
+    "https://buyee.jp/item/search/query/vision%20limited?sort=end&order=d&translationType=98&suggest=1",
+    "https://buyee.jp/item/search/query/vision%20limited?sort=end&order=d&translationType=98&suggest=2",
+    "https://buyee.jp/item/search/query/popmax%20sp-c?sort=end&order=d&translationType=98&suggest=1",
+    "https://buyee.jp/item/search/query/vision%20sp-c?sort=end&order=a&translationType=98&page=1",
+    "https://buyee.jp/item/search/query/vision%20sp-c?sort=end&order=a&translationType=98&page=2",
+    "https://buyee.jp/item/search/query/vision%20sp-c?sort=end&order=a&translationType=98&page=3",
+    "https://buyee.jp/item/search/query/vision%20sp-c?sort=end&order=a&translationType=98&page=4",
+    "https://buyee.jp/item/search/query/megabass%20limited?sort=end&order=a&translationType=98&suggest=1",
+    "https://buyee.jp/item/search/query/megabass%20limited?sort=end&order=a&translationType=98&suggest=2",
+    "https://buyee.jp/item/search/query/megabass%20limited?sort=end&order=d&translationType=98&page=1&suggest=1",
+    "https://buyee.jp/item/search/query/megabass%20limited?sort=end&order=d&translationType=98&page=1&suggest=2",
 ]
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s — %(message)s', datefmt='%H:%M:%S')
+KEY_PHRASES = [
+    "Black Viper", "Candy", "Crystal Lime Frog", "Cuba Libre", "Cyber Illusion",
+    "Dorado", "FA Ghost Wakasagi", "FA Gill", "FA Shirauo", "FA Wakasagi",
+    "Frozen Hasu", "Frozen Tequila", "Full Blue", "Full Mekki", "Genroku",
+    "GG Biwahigai", "GG Hasu", "GG Jekyll & Hyde", "GG Megabass Kinkuro",
+    "GG Mid Night Bone", "GG Moss Ore", "GG Oikawa", "GP Ayu", "GP Phantom",
+    "GP Tanagon", "Hakusei Muddy", "HT Hakone Wakasagi", "HT Kossori", "Hiuo",
+    "IL Mirage", "Karakusa Tiger", "Killer Kawaguchi", "M Aka Kin", "M Cosmic Shad",
+    "M Endmax", "M Golden Lime", "Megabass Shrimp", "MG Vegetation Reactor",
+    "Modena Bone", "Morning Dawn", "Nanko Reaction", "Northern Secret",
+    "PM Midnight Bone", "PM Threadfin Shad", "Redeyed Glass Shrimp", "Rising Sun",
+    "Sakura Ghost", "Sakura Viper", "SB CB Stain Reaction", "SB OB Shad",
+    "SB PB Stain Reaction", "Sexy Ayu", "SG Hot Shad", "SG Kasumi Reaction",
+    "Spawn Killer", "Stealth Wakasagi", "TLC", "Triple Illusion", "Wagin Hasu",
+    "GLX Rainbow", "Gori Copper", "GG Perch OB", "IL Red Head", "HT ITO Tennessee Shad",
+    "Matcha Head", "GG Alien Gold", "GP Kikyo", "GP Pro Blue", "Blue Back Chart Candy",
+    "GG Chartreuse Back Bass", "GG Shad", "Burst Sand Snake", "CMF", "GLX Secret Flasher",
+    "Impact White", "SP Sunset Tequila", "GP Tequila Shad", "White Butterfly",
+    "TLO", "GP Gerbera", "SK", "Shibukin Tiger", "Elegy Bone", "Threadfin Shad",
+    "Wakasagi Glass", "Mystic Gill", "French Pearl", "Ozark Shad"
+]
 
-conn = sqlite3.connect("grail.db", check_same_thread=False)
-c = conn.cursor()
-c.execute("CREATE TABLE IF NOT EXISTS seen (id TEXT PRIMARY KEY)")
-conn.commit()
+# ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
+SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/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"
+# ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
 
-def ping(title, url, price=""):
-    text = f"*MEGABASS GRAIL DROPPED*\n*{title.strip()}*\n{price}\n{url}"
+CHECK_INTERVAL_MINUTES = 10
+
+# ==================== SETUP ====================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(message)s",
+    datefmt="%H:%M:%S"
+)
+logger = logging.getLogger(__name__)
+
+session = requests.Session()
+retry = Retry(total=4, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504])
+session.mount("https://", HTTPAdapter(max_retries=retry))
+session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.9",
+})
+
+# Prevent duplicate alerts (URL + exact set of colors)
+already_notified: Set[Tuple[str, Tuple[str, ...]]] = set()
+
+# ==================== FUNCTIONS ====================
+
+def fetch_page(url: str) -> str | None:
     try:
-        httpx.post(SLACK_WEBHOOK, json={"text": text}, timeout=10)
-        logging.info(f"PING → {title[:70]} {price}")
-    except:
-        logging.error("Slack failed")
+        r = session.get(url, timeout=20)
+        r.raise_for_status()
+        r.encoding = "utf-8"
+        logger.info(f"Fetched {url.split('?')[0]}... ({len(r.text):,} chars)")
+        return r.text
+    except Exception as e:
+        logger.error(f"Failed {url} → {e}")
+        return None
 
-def is_grail(s):
-    return any(kw.lower() in s.lower() for kw in GRAIL_KEYWORDS)
 
-def hunt():
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    
-    with httpx.Client(headers=headers, timeout=30, follow_redirects=True) as client:
-        for url in URLS:
-            try:
-                r = client.get(url)
-                if r.status_code != 200:
-                    continue
+def find_key_phrases(html: str) -> Set[str]:
+    found = set()
+    lower_html = html.lower()
+    for phrase in KEY_PHRASES:
+        phrase_lower = phrase.lower()
+        # Whole-word match that works even with punctuation
+        if re.search(rf"(?<!\w){re.escape(phrase_lower)}(?!\w)", lower_html):
+            found.add(phrase)
+    return found
 
-                # This regex works on every single Buyee page right now (Dec 2025)
-                items = re.findall(r'href="(\/item[^"]+?)".*?>([^<]{5,140}?)<.*?([¥￥][\d,]+)', r.text, re.DOTALL)
 
-                src = "Mercari" if "mercari" in url else "Buyee"
-                q = url.split("query/")[-1].split("?")[0] if "query/" in url else url.split("keyword=")[-1].split("&")[0]
-                logging.info(f"{src.ljust(8)} → {len(items):3d} items — {q[:50]}")
+def send_to_slack(url: str, matches: List[str]):
+    if not matches:
+        return
+    colors = "\n• ".join(matches)
+    text = f"NEW RARE COLOR(S) DETECTED!\n• {colors}\n\n<{url}|View on Buyee>"
 
-                for path, raw_title, price in items:
-                    full_url = "https://buyee.jp" + path
-                    title = re.sub(r'\s+', ' ', raw_title).strip()
+    payload = {
+        "text": text,
+        "username": "Megabass Vision Hunter",
+        "icon_emoji": ":fishing_pole_and_fish:"
+    }
+    try:
+        r = requests.post(SLACK_WEBHOOK_URL, json=payload, timeout=10)
+        if r.status_code == 200:
+            logger.info(f"Alert sent → {', '.join(matches)}")
+        else:
+            logger.error(f"Slack returned {r.status_code}: {r.text}")
+    except Exception as e:
+        logger.error(f"Slack failed → {e}")
 
-                    # Kill Honda scooter garbage
-                    if any(x in title.lower() for x in ["honda","スクーター","エンジン","pcx","dio","jf","破損"]):
-                        continue
 
-                    if not is_grail(title):
-                        continue
+def scan_once():
+    logger.info(f"Scanning {len(URLS)} pages...")
+    for url in URLS:
+        html = fetch_page(url)
+        if not html:
+            continue
+        matches = find_key_phrases(html)
+        if matches:
+            key = (url, tuple(sorted(matches)))
+            if key not in already_notified:
+                logger.info(f"HIT → {', '.join(matches)}")
+                send_to_slack(url, list(matches))
+                already_notified.add(key)
 
-                    uid = hashlib.md5((full_url + title).encode()).hexdigest()
-                    if c.execute("SELECT 1 FROM seen WHERE id=?", (uid,)).fetchone():
-                        continue
 
-                    ping(title, full_url, price)
-                    c.execute("INSERT OR IGNORE INTO seen VALUES (?)", (uid,))
-                    conn.commit()
-
-                time.sleep(random.uniform(9, 15))
-
-            except Exception as e:
-                logging.error(f"Error {url[:60]} → {e}")
-
-    logging.info("CYCLE FINISHED — sleeping 80 seconds\n")
-
-# Flask
-app = Flask(__name__)
-
-@app.route("/")
-def home():
-    return "<h1>MEGABASS SNIPER v3.2 LIVE</h1><p>Running every 80 sec</p><a href='/hunt'><button style='padding:20px'>Manual Hunt</button></a>"
-
-@app.route("/hunt")
-def manual():
-    threading.Thread(target=hunt, daemon=True).start()
-    return "Hunt triggered — check Slack!"
-
-# Auto loop
-def auto():
-    time.sleep(10)
-    while True:
-        hunt()
-        time.sleep(80)
+# ==================== RUN ====================
 
 if __name__ == "__main__":
-    threading.Thread(target=auto, daemon=True).start()
-    app.run(host="0.0.0.0", port=int(__import__("os").environ.get("PORT", 10000)))
+    logger.info("Buyee Vision 110 Limited Scanner STARTED")
+    logger.info(f"Monitoring {len(URLS)} search pages every {CHECK_INTERVAL_MINUTES} minutes")
+
+    # Immediate first scan
+    scan_once()
+
+    # Then loop forever
+    while True:
+        time.sleep(CHECK_INTERVAL_MINUTES * 60)
+        logger.info(f"Next scan starting...")
+        scan_once()
