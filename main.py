@@ -1,4 +1,4 @@
-# main.py — Vision 110 LIMITED BOT (Bot #1) — Render Free Tier
+# main.py — VISION 110 LIMITED BOT (New Only) — Render Free Tier
 import requests
 import re
 import time
@@ -12,19 +12,14 @@ from typing import Set, Tuple
 
 # ==================== BOT IDENTITY ====================
 BOT_NAME = "VISION 110 LIMITED BOT"
-CHECK_INTERVAL_MINUTES = 4
+CHECK_INTERVAL_MINUTES = 4  # Fastest bot — scans every 4 minutes
 
-# ==================== URLS (only the rarest pages) ====================
+# ==================== ULTIMATE NEW-ONLY URL ====================
 URLS = [
-    "https://buyee.jp/item/search/query/vision%20limited?sort=end&order=d&translationType=98&suggest=1",
-    "https://buyee.jp/item/search/query/vision%20limited?sort=end&order=d&translationType=98&suggest=2",
-    "https://buyee.jp/item/search/query/megabass%20limited?sort=end&order=a&translationType=98&suggest=1",
-    "https://buyee.jp/item/search/query/megabass%20limited?sort=end&order=a&translationType=98&suggest=2",
-    "https://buyee.jp/item/search/query/megabass%20limited?sort=end&order=d&translationType=98&page=1&suggest=1",
-    "https://buyee.jp/item/search/query/megabass%20limited?sort=end&order=d&translationType=98&page=1&suggest=2",
+    "https://buyee.jp/item/search?query=megabass+vision+110+limited+OR+respect&translationType=98&sort=end&order=d&itemConditionId=1&brandId=100000022&rootCategoryId=26341&listingType=auction"
 ]
 
-# ==================== RARE COLORS ====================
+# ==================== ALL RARE COLORS ====================
 KEY_PHRASES = [
     "Black Viper","Candy","Crystal Lime Frog","Cuba Libre","Cyber Illusion","Dorado","FA Ghost Wakasagi","FA Gill",
     "FA Shirauo","FA Wakasagi","Frozen Hasu","Frozen Tequila","Full Blue","Full Mekki","Genroku","GG Biwahigai",
@@ -50,15 +45,30 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", date
 log = logging.getLogger(__name__)
 
 session = requests.Session()
-session.headers.update({"User-Agent": "Mozilla/5.0"})
-retry = Retry(total=4, backoff_factor=2, status_forcelist=[429,500,502,503,504])
+session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+retry = Retry(total=4, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504])
 session.mount("https://", HTTPAdapter(max_retries=retry))
 
-seen: Set[Tuple[str, Tuple[str,...]]] = set()
+seen: Set[Tuple[str, Tuple[str, ...]]] = set()
+
+# ==================== SLACK STARTUP MESSAGE ====================
+def slack_startup():
+    if "YOUR_REAL" in SLACK_WEBHOOK_URL or not SLACK_WEBHOOK_URL:
+        log.info("Startup message skipped (webhook not set)")
+        return
+    payload = {
+        "text": f"*{BOT_NAME}* is LIVE and protecting the nest :fishing_pole_and_fish:\nScanning brand-new Limited/Respect listings every {CHECK_INTERVAL_MINUTES} minutes",
+        "icon_emoji": ":megabass:"
+    }
+    try:
+        requests.post(SLACK_WEBHOOK_URL, json=payload, timeout=10)
+        log.info("Startup message sent to Slack")
+    except:
+        log.error("Startup message failed")
 
 # ==================== CORE SCAN ====================
 def scan():
-    log.info(f"{BOT_NAME} → Scanning {len(URLS)} pages...")
+    log.info(f"{BOT_NAME} → Scanning for new Limited/Respect unicorns...")
     for url in URLS:
         try:
             html = session.get(url, timeout=20).text
@@ -68,24 +78,24 @@ def scan():
                 if key not in seen:
                     seen.add(key)
                     payload = {
-                        "text": f"*{BOT_NAME}*\nJACKPOT!\n• {'\n• '.join(found)}\n\n<{url}|View on Buyee>",
+                        "text": f"*{BOT_NAME}*\nJACKPOT! NEW SEALED!\n• {'\n• '.join(found)}\n\n<{url}|View on Buyee>",
                         "icon_emoji": ":crown:"
                     }
                     requests.post(SLACK_WEBHOOK_URL, json=payload, timeout=10)
-                    log.info(f"HIT → {', '.join(found)}")
+                    log.info(f"JACKPOT → {' | '.join(found)}")
         except Exception as e:
-            log.error(f"Error on {url}: {e}")
-        time.sleep(1.5)
+            log.error(f"Scan error: {e}")
+        time.sleep(1.5)  # Keeps Render free tier happy forever
 
-# ==================== RENDER WEB SERVER (CLEAN) ====================
+# ==================== RENDER WEB SERVER ====================
 app = Flask(__name__)
 
 @app.route("/")
 def home():
     return jsonify({
         "bot": BOT_NAME,
-        "status": "alive",
-        "urls": len(URLS),
+        "status": "guarding the nest",
+        "interval_min": CHECK_INTERVAL_MINUTES,
         "hits_seen": len(seen)
     })
 
@@ -96,7 +106,8 @@ def scanner_loop():
         scan()
 
 if __name__ == "__main__":
-    log.info(f"{BOT_NAME} STARTED — scanning every {CHECK_INTERVAL_MINUTES} minutes")
+    log.info(f"{BOT_NAME} STARTED — protecting retirement 24/7")
+    slack_startup()                                      # ← Pings Slack immediately
     threading.Thread(target=scanner_loop, daemon=True).start()
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
