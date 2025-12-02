@@ -1,5 +1,4 @@
-Flask
+flask
 requests
 beautifulsoup4
-slack-sdk
 gunicorn
