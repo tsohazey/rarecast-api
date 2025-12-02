@@ -29,7 +29,7 @@ if GOOGLE_JSON:
         )
         gc = gspread.authorize(creds)
         # <<< REPLACE THIS LINE WITH YOUR EXACT SHEET URL >>>
-        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1YOUR_REAL_SHEET_ID_HERE/edit")
+        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1ZYMqvxx_djiKQwFfxb8rGC-320jv9bWJxuZEWoJdAx4/edit")
         sheet = sh.worksheet("HUNTING LOG")
         print("Google Sheets → HUNTING LOG tab connected")
     except Exception as e:
